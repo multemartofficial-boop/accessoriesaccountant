@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, ArrowRight, Building2, Check, Download, FileText, Printer, Save, Send, X } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Building2, Check, Clock3, Download, FileText, Landmark, Mail, MapPin, Phone, Printer, Save, Send, ShieldCheck, UserRound, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { DataTable, Field, MetricStrip, PageHeader, Panel, SelectField, TabsBar, type Column, type TableRowData } from "./ui";
+import { ActionDialog, DataTable, Field, MetricStrip, MiniStats, PageHeader, Panel, SelectField, TabsBar, submitWithToast, type Column, type TableRowData } from "./ui";
 
 const money = (n: number) => `৳${n.toLocaleString("en-US")}`;
 const chartData = [
@@ -28,6 +29,21 @@ const inventoryRows = [
   { sku: "ELA-WOV-25", product: "Woven Elastic 25mm", category: "Elastic", warehouse: "Gazipur", available: "980 m", reserved: "700", status: "Low Stock" },
   { sku: "TAP-TWL-15", product: "Cotton Twill Tape 15mm", category: "Tapes", warehouse: "Narayanganj", available: "0 m", reserved: "0", status: "Out of Stock" },
 ];
+
+const entityFields = [
+  { label: "Name", name: "name", required: true },
+  { label: "Contact person", name: "contact", required: true },
+  { label: "Phone", name: "phone", required: true },
+  { label: "Email", name: "email", type: "email", required: true },
+  { label: "Payment terms", name: "terms", options: ["Cash", "15 days", "30 days", "45 days"] },
+  { label: "Credit limit", name: "limit", type: "number" },
+];
+
+function useActionDialog() {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Record<string, string> | undefined>();
+  return { open, setOpen, editing, create: () => { setEditing(undefined); setOpen(true); }, edit: (row: TableRowData) => { setEditing(Object.fromEntries(Object.entries(row).map(([key, value]) => [key, String(value)]))); setOpen(true); } };
+}
 
 export function DashboardScreen() {
   const [period, setPeriod] = useState("Month");
