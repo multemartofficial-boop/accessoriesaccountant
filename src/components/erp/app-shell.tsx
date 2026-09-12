@@ -1,4 +1,5 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   BarChart3,
@@ -131,12 +132,10 @@ function AppSidebar() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const [search, setSearch] = React.useState("");
-  const runSearch = (event: React.FormEvent) => {
+  const [search, setSearch] = useState("");
+  const runSearch = (event: FormEvent) => {
     event.preventDefault();
     window.dispatchEvent(new CustomEvent("erp-global-search", { detail: search }));
-    if (useRouterState) void navigate;
   };
   return (
     <SidebarProvider style={{ "--sidebar-width": "14rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties} className="w-full">
