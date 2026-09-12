@@ -6,3 +6,7 @@
 - [x] Implement Documents, Cash & Bank, Approvals, Audit, VAT/Tax, and Financial Reports
 - [x] Implement Warehouses, Analytics Center, and Settings
 - [x] Add route-specific metadata and verify desktop/mobile interaction
+- [ ] Polish the shared visual system, KPI cards, charts, sidebar, and top bar
+- [ ] Add reusable dialogs, validation, feedback, filtering, and row actions
+- [ ] Wire create/edit/delete, detail selection, approvals, and document/report actions
+- [ ] Verify every route and representative desktop/mobile workflows
