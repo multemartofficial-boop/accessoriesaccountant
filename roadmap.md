@@ -11,3 +11,8 @@
 - [x] Add reusable dialogs, validation, feedback, filtering, and row actions
 - [x] Wire create/edit/delete, detail selection, approvals, and document/report actions
 - [x] Verify every route and representative desktop/mobile workflows
+- [ ] Add phone-only bottom navigation and complete module drawer
+- [ ] Add compact mobile header and expandable full-width search
+- [ ] Convert shared tables into tappable mobile record cards
+- [ ] Stack mobile forms/details and add persistent action bars
+- [ ] Verify all modules at 375–430px without changing desktop layouts
