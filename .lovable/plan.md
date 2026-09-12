@@ -4,6 +4,7 @@
 Keep every existing module, page, field, and data point while turning the current frontend into a polished, fully click-through client demo.
 
 ## What will change
+- Replace repeated tab-and-table screens with content-specific structures: party profiles, transactional order forms, product and tax forms, stock dashboards, treasury ledgers, approval queues, audit feeds, financial summaries, and grouped settings.
 - Refine the shared visual system with soft-neutral workspaces, premium bordered surfaces, subtle shadows, 8px corners, stronger typography, and purposeful navy/green/amber/red accents.
 - Upgrade KPI cards with metric-specific icons and accent rails, larger values, clearer labels, and more breathing room.
 - Improve dashboard charts with smooth curves, dual gradient fills, lighter dashed grids, richer tooltips, and a dot legend.
@@ -18,6 +19,7 @@ Keep every existing module, page, field, and data point while turning the curren
 - Every primary create/add/record button will open a relevant form.
 - Tabs will render distinct content, not only change appearance.
 - Representative create, edit, delete, approve, decline, search, filter, export, print, and save flows will be tested.
+- Each non-list tab will be checked for a structure appropriate to its job rather than a reused generic table.
 
 ## Technical notes
 - Frontend only; state resets on refresh.
