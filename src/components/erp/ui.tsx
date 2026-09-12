@@ -105,7 +105,7 @@ export function DataTable({ columns, rows, searchable = true, onRowClick, onEdit
   }, []);
   const filtered = useMemo(() => rows.filter((row) => {
     const matches = Object.values(row).join(" ").toLowerCase().includes(query.toLowerCase());
-    return matches && (!filterOn || !String(row.status ?? "").toLowerCase().includes("completed"));
+    return matches && (!filterOn || !String(row["status"] ?? "").toLowerCase().includes("completed"));
   }), [filterOn, query, rows]);
   const exportRows = () => {
     const csv = [columns.map((c) => c.label), ...filtered.map((r) => columns.map((c) => String(r[c.key] ?? "")))].map((line) => line.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -139,7 +139,7 @@ export function ActionDialog({ open, onOpenChange, title, description, fields, s
     const values = Object.fromEntries(new FormData(event.currentTarget).entries()) as Record<string, string>;
     onSubmit?.(values); onOpenChange(false); toast.success(`${title} saved`, { description: "The demo data was updated successfully." });
   };
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-lg sm:max-w-2xl"><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader><form onSubmit={submit}><div className="grid gap-4 py-2 sm:grid-cols-2">{fields.map((field) => field.options ? <SelectField key={field.name} label={field.label} name={field.name} options={field.options} defaultValue={initialValues?.[field.name]} required={field.required}/> : <Field key={field.name} label={field.label} name={field.name} type={field.type} defaultValue={initialValues?.[field.name]} required={field.required} placeholder={`Enter ${field.label.toLowerCase()}`}/>)}</div><DialogFooter className="mt-5"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit"><Plus className="size-4" />{submitLabel}</Button></DialogFooter></form></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-lg sm:max-w-2xl"><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader><form onSubmit={submit}><div className="grid gap-4 py-2 sm:grid-cols-2">{fields.map((field) => field.options ? <SelectField key={field.name} label={field.label} name={field.name} options={field.options} {...(initialValues?.[field.name] ? { defaultValue: initialValues[field.name] } : {})} {...(field.required !== undefined ? { required: field.required } : {})}/> : <Field key={field.name} label={field.label} name={field.name} {...(field.type ? { type: field.type } : {})} {...(initialValues?.[field.name] ? { defaultValue: initialValues[field.name] } : {})} {...(field.required !== undefined ? { required: field.required } : {})} placeholder={`Enter ${field.label.toLowerCase()}`}/>)}</div><DialogFooter className="mt-5"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit"><Plus className="size-4" />{submitLabel}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 export function submitWithToast(label: string) { toast.success(label, { description: "Your changes are saved in this demo session." }); }
