@@ -97,11 +97,11 @@ function Brand() {
   const { state } = useSidebar();
   return (
     <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
-      <div className="grid size-8 shrink-0 place-items-center rounded-sm bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">GT</div>
+      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">GT</div>
       {state === "expanded" && (
         <div className="min-w-0 leading-tight">
           <div className="truncate text-sm font-bold text-sidebar-foreground">GarmentTrade</div>
-          <div className="truncate text-[10px] uppercase text-sidebar-foreground/55">Accessories ERP</div>
+          <div className="truncate text-[11px] uppercase text-sidebar-foreground/55">Accessories ERP</div>
         </div>
       )}
     </div>
@@ -116,14 +116,14 @@ function AppSidebar() {
       <SidebarContent className="gap-2 py-3">
         {groups.map((group) => (
           <SidebarGroup key={group.label} className="py-1.5">
-            <SidebarGroupLabel className="h-7 px-3 text-[9px] font-bold uppercase tracking-[0.12em]">{group.label}</SidebarGroupLabel>
+            <SidebarGroupLabel className="h-7 px-3 text-[10px] font-bold uppercase tracking-[0.12em]">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {group.items.map((item) => {
                   const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={active} tooltip={item.label} className="relative h-9 rounded-md border-l-2 border-l-transparent px-2.5 text-[12px] transition-colors hover:bg-sidebar-accent data-[active=true]:border-l-sidebar-primary data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary [&>a>svg]:data-[active=true]:text-sidebar-primary">
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.label} className="relative h-9 rounded-md border-l-2 border-l-transparent px-2.5 text-[13px] transition-colors hover:bg-sidebar-accent data-[active=true]:border-l-sidebar-primary data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary [&>a>svg]:size-[18px] [&>a>svg]:data-[active=true]:text-sidebar-primary">
                         <Link to={item.to}><item.icon /><span>{item.label}</span>{item.badge && <span className="ml-auto text-[10px] tabular-nums opacity-70">{item.badge}</span>}</Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -137,9 +137,9 @@ function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip="Nadia Rahman" className="rounded-sm">
-              <div className="grid size-7 shrink-0 place-items-center rounded-sm bg-accent text-[10px] font-semibold text-accent-foreground">NR</div>
-              <div className="min-w-0 flex-1 leading-tight"><div className="truncate text-xs font-semibold">Nadia Rahman</div><div className="truncate text-[10px] text-sidebar-foreground/55">Accounts Manager</div></div>
+            <SidebarMenuButton size="lg" tooltip="Nadia Rahman" className="rounded-md">
+              <div className="grid size-7 shrink-0 place-items-center rounded-md bg-accent text-[11px] font-semibold text-accent-foreground">NR</div>
+              <div className="min-w-0 flex-1 leading-tight"><div className="truncate text-xs font-semibold">Nadia Rahman</div><div className="truncate text-[11px] text-sidebar-foreground/55">Accounts Manager</div></div>
               <ChevronDown className="size-3" />
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -169,7 +169,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-3 shadow-header backdrop-blur md:h-15 md:px-4">
           <SidebarTrigger className="hidden shrink-0 md:inline-flex" />
           <button type="button" onClick={() => setMoreOpen(true)} aria-label="Open all modules" className="grid size-11 shrink-0 place-items-center rounded-md text-primary md:hidden"><Menu className="size-5" /></button>
-          <div className="flex min-w-0 items-center gap-2 md:hidden"><div className="grid size-8 shrink-0 place-items-center rounded-sm bg-primary text-[10px] font-bold text-primary-foreground">GT</div><span className="truncate text-sm font-bold">GarmentTrade</span></div>
+          <div className="flex min-w-0 items-center gap-2 md:hidden"><div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">GT</div><span className="truncate text-sm font-bold">GarmentTrade</span></div>
           <form onSubmit={runSearch} className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search this page..." className="h-9 rounded-lg border-border bg-surface-subtle pl-9 text-xs shadow-none focus:bg-card" />
