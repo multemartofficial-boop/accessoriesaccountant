@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, ArrowRight, Check, Download, FileText, Package, Printer, Save, Send, ShieldCheck, WalletCards, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, Check, Download, FileText, Printer, Save, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
