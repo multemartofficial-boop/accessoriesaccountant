@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   BarChart3,
@@ -93,17 +93,17 @@ function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="p-0"><Brand /></SidebarHeader>
-      <SidebarContent className="gap-0 py-2">
+      <SidebarContent className="gap-2 py-3">
         {groups.map((group) => (
-          <SidebarGroup key={group.label} className="py-1">
-            <SidebarGroupLabel className="h-7 px-2 text-[10px] font-semibold uppercase">{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.label} className="py-1.5">
+            <SidebarGroupLabel className="h-7 px-3 text-[9px] font-bold uppercase tracking-[0.12em]">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {group.items.map((item) => {
                   const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={active} tooltip={item.label} className="h-8 rounded-sm text-[12px] data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground">
+                      <SidebarMenuButton asChild isActive={active} tooltip={item.label} className="relative h-9 rounded-md border-l-2 border-l-transparent px-2.5 text-[12px] transition-colors hover:bg-sidebar-accent data-[active=true]:border-l-sidebar-primary data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary [&>a>svg]:data-[active=true]:text-sidebar-primary">
                         <Link to={item.to}><item.icon /><span>{item.label}</span>{item.badge && <span className="ml-auto text-[10px] tabular-nums opacity-70">{item.badge}</span>}</Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -131,22 +131,29 @@ function AppSidebar() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const [search, setSearch] = React.useState("");
+  const runSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("erp-global-search", { detail: search }));
+    if (useRouterState) void navigate;
+  };
   return (
-    <SidebarProvider style={{ "--sidebar-width": "14rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "14rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties} className="w-full">
       <AppSidebar />
       <SidebarInset className="min-w-0 bg-workspace">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background px-4">
+        <header className="sticky top-0 z-20 flex h-15 items-center gap-3 border-b bg-background/95 px-4 shadow-header backdrop-blur">
           <SidebarTrigger className="shrink-0" />
-          <div className="relative hidden w-full max-w-sm md:block">
+          <form onSubmit={runSearch} className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input aria-label="Global search" placeholder="Search products, buyers, invoices..." className="h-8 rounded-sm pl-8 text-xs shadow-none" />
-          </div>
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search this page..." className="h-9 rounded-lg border-border bg-surface-subtle pl-9 text-xs shadow-none focus:bg-card" />
+          </form>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-[11px] text-muted-foreground lg:block">FY 2026 · Dhaka Office</span>
-            <Button variant="outline" size="icon" aria-label="Notifications" className="relative h-8 w-8 rounded-sm shadow-none"><Bell className="size-3.5" /><span className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive" /></Button>
+             <Button variant="outline" size="icon" aria-label="Notifications" className="relative h-9 w-9 rounded-lg bg-card shadow-sm"><Bell className="size-3.5" /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-destructive" /></Button>
           </div>
         </header>
-        <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-5">{children}</main>
+        <main className="min-w-0 flex-1 p-4 sm:p-5 lg:p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
