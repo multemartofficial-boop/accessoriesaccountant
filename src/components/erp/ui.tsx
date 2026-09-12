@@ -125,15 +125,15 @@ export function TabsBar({ tabs, active, onChange }: { tabs: string[]; active: st
   return <div className="flex gap-6 overflow-x-auto border-b bg-card px-4">{tabs.map((tab) => <button key={tab} type="button" onClick={() => onChange(tab)} className={cn("h-11 whitespace-nowrap border-b-2 text-xs font-semibold transition-colors", active === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>{tab}</button>)}</div>;
 }
 
-export function Field({ label, name, defaultValue, value, onChange, type = "text", placeholder, required = false }: { label: string; name?: string; defaultValue?: string; value?: string; onChange?: (value: string) => void; type?: string; placeholder?: string; required?: boolean }) {
+export function Field({ label, name, defaultValue, value, onChange, type = "text", placeholder, required = false }: { label: string; name?: string | undefined; defaultValue?: string | undefined; value?: string | undefined; onChange?: ((value: string) => void) | undefined; type?: string | undefined; placeholder?: string | undefined; required?: boolean | undefined }) {
   return <label className="grid gap-1.5 text-[11px] font-semibold text-foreground"><span>{label}{required && <span className="ml-0.5 text-destructive">*</span>}</span><Input name={name ?? label} type={type} defaultValue={value === undefined ? defaultValue : undefined} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} required={required} placeholder={placeholder} className="h-9 rounded-lg bg-card text-xs shadow-none" /></label>;
 }
 
-export function SelectField({ label, name, options, defaultValue, required = false }: { label: string; name?: string; options: string[]; defaultValue?: string; required?: boolean }) {
+export function SelectField({ label, name, options, defaultValue, required = false }: { label: string; name?: string | undefined; options: string[]; defaultValue?: string | undefined; required?: boolean | undefined }) {
   return <label className="grid gap-1.5 text-[11px] font-semibold"><span>{label}{required && <span className="ml-0.5 text-destructive">*</span>}</span><select name={name ?? label} required={required} defaultValue={defaultValue} className="h-9 rounded-lg border border-input bg-card px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/25">{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
 }
 
-export function ActionDialog({ open, onOpenChange, title, description, fields, submitLabel = "Save record", initialValues, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description: string; fields: { label: string; name: string; type?: string; options?: string[]; required?: boolean }[]; submitLabel?: string; initialValues?: Record<string, string>; onSubmit?: (values: Record<string, string>) => void }) {
+export function ActionDialog({ open, onOpenChange, title, description, fields, submitLabel = "Save record", initialValues, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; title: string; description: string; fields: { label: string; name: string; type?: string | undefined; options?: string[] | undefined; required?: boolean | undefined }[]; submitLabel?: string | undefined; initialValues?: Record<string, string> | undefined; onSubmit?: ((values: Record<string, string>) => void) | undefined }) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries()) as Record<string, string>;
