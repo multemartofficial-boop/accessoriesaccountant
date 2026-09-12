@@ -11,6 +11,8 @@ import {
   ClipboardCheck,
   FileOutput,
   LayoutDashboard,
+  Menu,
+  MoreHorizontal,
   PackageSearch,
   ReceiptText,
   Search,
@@ -24,6 +26,14 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   Sidebar,
   SidebarContent,
@@ -73,6 +83,15 @@ const groups: { label: string; items: { label: string; to: string; icon: LucideI
     items: [{ label: "Settings", to: "/settings", icon: Settings }],
   },
 ];
+
+const primaryMobileItems = [
+  { label: "Dashboard", to: "/", icon: LayoutDashboard },
+  { label: "Sales", to: "/sales", icon: Store },
+  { label: "Purchase", to: "/purchase", icon: ShoppingCart },
+  { label: "Inventory", to: "/inventory", icon: Boxes },
+];
+
+const moreMobileItems = groups.flatMap((group) => group.items).filter((item) => !primaryMobileItems.some((primary) => primary.to === item.to));
 
 function Brand() {
   const { state } = useSidebar();
@@ -133,26 +152,48 @@ function AppSidebar() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [search, setSearch] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isActive = (to: string) => to === "/" ? pathname === "/" : pathname.startsWith(to);
+  const moreActive = moreMobileItems.some((item) => isActive(item.to));
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
     window.dispatchEvent(new CustomEvent("erp-global-search", { detail: search }));
+    setMobileSearchOpen(false);
   };
   return (
     <SidebarProvider style={{ "--sidebar-width": "14rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties} className="w-full">
       <AppSidebar />
       <SidebarInset className="min-w-0 bg-workspace">
-        <header className="sticky top-0 z-20 flex h-15 items-center gap-3 border-b bg-background/95 px-4 shadow-header backdrop-blur">
-          <SidebarTrigger className="shrink-0" />
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/95 px-3 shadow-header backdrop-blur md:h-15 md:px-4">
+          <SidebarTrigger className="hidden shrink-0 md:inline-flex" />
+          <button type="button" onClick={() => setMoreOpen(true)} aria-label="Open all modules" className="grid size-11 shrink-0 place-items-center rounded-md text-primary md:hidden"><Menu className="size-5" /></button>
+          <div className="flex min-w-0 items-center gap-2 md:hidden"><div className="grid size-8 shrink-0 place-items-center rounded-sm bg-primary text-[10px] font-bold text-primary-foreground">GT</div><span className="truncate text-sm font-bold">GarmentTrade</span></div>
           <form onSubmit={runSearch} className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search this page..." className="h-9 rounded-lg border-border bg-surface-subtle pl-9 text-xs shadow-none focus:bg-card" />
           </form>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-[11px] text-muted-foreground lg:block">FY 2026 · Dhaka Office</span>
-             <Button variant="outline" size="icon" aria-label="Notifications" className="relative h-9 w-9 rounded-lg bg-card shadow-sm"><Bell className="size-3.5" /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-destructive" /></Button>
+            <Button variant="ghost" size="icon" aria-label="Search" className="size-11 rounded-md md:hidden" onClick={() => setMobileSearchOpen((open) => !open)}><Search className="size-5" /></Button>
+            <Button variant="outline" size="icon" aria-label="Notifications" className="relative size-11 rounded-lg bg-card shadow-sm md:size-9"><Bell className="size-4 md:size-3.5" /><span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-destructive md:right-1.5 md:top-1.5" /></Button>
           </div>
+          {mobileSearchOpen && <form onSubmit={runSearch} className="absolute inset-0 z-10 flex items-center gap-2 bg-background px-3 md:hidden"><Search className="size-4 shrink-0 text-muted-foreground"/><Input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search this page..." className="h-11 flex-1 rounded-lg bg-surface-subtle"/><Button type="button" variant="ghost" className="h-11 px-3" onClick={() => setMobileSearchOpen(false)}>Cancel</Button></form>}
         </header>
-        <main className="min-w-0 flex-1 p-4 sm:p-5 lg:p-6">{children}</main>
+        <main className="min-w-0 flex-1 px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:p-5 lg:p-6">{children}</main>
+        <nav aria-label="Primary mobile navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background/98 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_oklch(0.22_0.03_255/0.08)] backdrop-blur md:hidden">
+          {primaryMobileItems.map((item) => <Link key={item.to} to={item.to} className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] font-semibold ${isActive(item.to) ? "text-primary" : "text-muted-foreground"}`}><item.icon className="size-5"/><span>{item.label}</span></Link>)}
+          <button type="button" onClick={() => setMoreOpen(true)} className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] font-semibold ${moreActive ? "text-primary" : "text-muted-foreground"}`}><MoreHorizontal className="size-5"/><span>More</span></button>
+        </nav>
+        <Drawer open={moreOpen} onOpenChange={setMoreOpen} shouldScaleBackground={false}>
+          <DrawerContent className="max-h-[82svh] rounded-t-xl md:hidden">
+            <DrawerHeader className="border-b px-5 pb-4 pt-3 text-left"><DrawerTitle className="text-base">All modules</DrawerTitle><DrawerDescription className="text-xs">Open any area of GarmentTrade ERP.</DrawerDescription></DrawerHeader>
+            <div className="grid grid-cols-2 gap-2 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              {moreMobileItems.map((item) => <DrawerClose asChild key={item.to}><Link to={item.to} className={`grid min-h-16 grid-cols-[44px_minmax(0,1fr)] items-center gap-2 rounded-lg border px-2 text-xs font-semibold ${isActive(item.to) ? "border-primary bg-accent text-primary" : "bg-card text-foreground"}`}><span className="grid size-10 place-items-center rounded-md bg-surface-subtle"><item.icon className="size-4"/></span><span className="min-w-0 leading-tight">{item.label}</span></Link></DrawerClose>)}
+            </div>
+          </DrawerContent>
+        </Drawer>
       </SidebarInset>
     </SidebarProvider>
   );
