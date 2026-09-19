@@ -16,3 +16,6 @@
 - [x] Convert shared tables into tappable mobile record cards
 - [x] Stack mobile forms/details and add persistent action bars
 - [x] Verify all modules at 375–430px without changing desktop layouts
+- [ ] Replace warehouse tables with location cards and stock summaries
+- [ ] Replace Settings user table with user and permission cards
+- [ ] Verify purpose-built module layouts on desktop and mobile
