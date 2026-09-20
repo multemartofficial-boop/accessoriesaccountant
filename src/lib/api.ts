@@ -1,7 +1,9 @@
 // Thin fetch wrapper around the GarmentTrade API.
-// Token is stored in localStorage; /api is proxied to the backend (vite.config.ts).
+// Token is stored in localStorage. In dev, /api is proxied to the backend
+// (vite.config.ts); in production set VITE_API_URL to the backend origin
+// (e.g. https://your-backend.example.com/api).
 
-const BASE = "/api";
+const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 const TOKEN_KEY = "gt_token";
 const USER_KEY = "gt_user";
 
