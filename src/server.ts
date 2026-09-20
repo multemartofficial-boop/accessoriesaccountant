@@ -26,13 +26,27 @@ async function getApiBase(): Promise<string> {
 }
 
 async function handleApiRequest(request: Request): Promise<Response> {
-  const base = await getApiBase();
-  const url = new URL(request.url);
-  const init: RequestInit = { method: request.method, headers: request.headers, redirect: "manual" };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = await request.arrayBuffer();
+  try {
+    const base = await getApiBase();
+    const url = new URL(request.url);
+    const init: RequestInit = {
+      method: request.method,
+      headers: request.headers,
+      redirect: "manual",
+    };
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      init.body = await request.arrayBuffer();
+    }
+    return await fetch(base + url.pathname + url.search, init);
+  } catch (error) {
+    apiBasePromise = undefined; // don't cache a failed startup — allow retry
+    console.error("API bridge error:", error);
+    const message = error instanceof Error ? error.message : "API unavailable";
+    return new Response(JSON.stringify({ error: `API error: ${message}` }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
   }
-  return fetch(base + url.pathname + url.search, init);
 }
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
