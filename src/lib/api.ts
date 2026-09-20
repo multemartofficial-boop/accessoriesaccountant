@@ -76,12 +76,23 @@ export const api = {
 };
 
 export async function login(email: string, password: string) {
-  const res = await fetch(`${BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    throw new ApiClientError(
+      0,
+      `Cannot reach the API at ${BASE}. In production set VITE_API_URL to your backend URL and redeploy.`,
+    );
+  }
   const body = await res.json().catch(() => ({}));
+  if (res.status === 404 && !body.error) {
+    throw new ApiClientError(404, `API not found at ${BASE} — set VITE_API_URL to the backend URL and redeploy.`);
+  }
   if (!res.ok) throw new ApiClientError(res.status, body.error ?? "Login failed");
   setSession(body.token, body.user);
   return body.user as SessionUser;

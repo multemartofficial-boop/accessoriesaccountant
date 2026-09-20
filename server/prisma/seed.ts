@@ -89,9 +89,7 @@ async function main() {
 
   // ── Users ──
   const users = [
-    { name: "Nadia Rahman", email: "admin@garmenttrade.com", role: "ADMIN", location: "Dhaka", pw: "admin123" },
-    { name: "Arif Hasan", email: "arif@garmenttrade.com", role: "MANAGER", location: "Gazipur", pw: "manager123" },
-    { name: "Maliha Islam", email: "maliha@garmenttrade.com", role: "STAFF", location: "Dhaka", pw: "staff123" },
+    { name: "Admin", email: "admin@garmenttrade.com", role: "ADMIN", location: "Dhaka", pw: "admin123" },
   ] as const;
   for (const u of users) {
     await prisma.user.upsert({
