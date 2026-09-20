@@ -3,7 +3,7 @@
 // (vite.config.ts); in production set VITE_API_URL to the backend origin
 // (e.g. https://your-backend.example.com/api).
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
+const BASE = (import.meta.env["VITE_API_URL"] as string | undefined) ?? "/api";
 const TOKEN_KEY = "gt_token";
 const USER_KEY = "gt_user";
 
