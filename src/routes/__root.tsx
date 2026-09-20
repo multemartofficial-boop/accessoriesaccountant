@@ -7,11 +7,13 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/erp/app-shell";
+import { LoginScreen } from "@/components/erp/login";
+import { getToken } from "@/lib/api";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -119,10 +121,30 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // null = session not yet resolved (SSR / first client render must match).
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setSignedIn(Boolean(getToken()));
+    const onLogin = () => setSignedIn(true);
+    const onLogout = () => setSignedIn(false);
+    window.addEventListener("erp-login", onLogin);
+    window.addEventListener("erp-logout", onLogout);
+    return () => {
+      window.removeEventListener("erp-login", onLogin);
+      window.removeEventListener("erp-logout", onLogout);
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell><Outlet /></AppShell>
+      {signedIn === null ? null : signedIn ? (
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      ) : (
+        <LoginScreen />
+      )}
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
   );

@@ -1,0 +1,866 @@
+// GarmentTrade ERP — database schema
+// Remote MariaDB/MySQL on Hostinger. DATABASE_URL is assembled from
+// DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD in .env via prisma.config.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum PartyStatus {
+  ACTIVE
+  REVIEW
+  INACTIVE
+}
+
+enum ApprovalStatus {
+  NONE
+  AWAITING_APPROVAL
+  APPROVED
+  DECLINED
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  PARTIAL
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUST
+  TRANSFER_OUT
+  TRANSFER_IN
+  RETURN_IN
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  DECLINED
+}
+
+enum AccountType {
+  CASH
+  BANK
+}
+
+enum TxnType {
+  RECEIPT
+  PAYMENT
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum TaxRateType {
+  OUTPUT
+  INPUT
+  BOTH
+  DEDUCTION
+}
+
+enum VatMode {
+  EXCLUSIVE
+  INCLUSIVE
+}
+
+enum AccountCategory {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  DECLINE
+  LOGIN
+}
+
+enum ApprovalEntityType {
+  PURCHASE_ORDER
+  SALES_ORDER
+  SALES_DISCOUNT
+  STOCK_ADJUSTMENT
+  SUPPLIER_PAYMENT
+  PAYMENT_COLLECTION
+  STOCK_TRANSFER
+}
+
+// ─────────────────────────── Auth & Settings ─────────────────────────
+
+model User {
+  id           Int         @id @default(autoincrement())
+  name         String
+  email        String      @unique
+  passwordHash String
+  role         Role        @default(STAFF)
+  location     String?
+  status       PartyStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  auditLogs         AuditLog[]
+  requestedApprovals ApprovalRequest[] @relation("RequestedBy")
+  decidedApprovals   ApprovalRequest[] @relation("DecidedBy")
+}
+
+model CompanyProfile {
+  id        Int     @id @default(1) // singleton row
+  name      String
+  legalName String?
+  logoUrl   String?
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  vatRegNo  String?  // BIN / VAT registration for invoice letterhead
+  tradeLicenseNo String?
+  updatedAt DateTime @updatedAt
+}
+
+// Key-value store for system-wide defaults:
+// currency, default_tax_rate_id, approval_threshold, low_stock_threshold,
+// vat_mode, notification toggles, etc.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Auto-numbering per document type: invoice, chalan, PO, payments...
+model DocumentSequence {
+  docType     String @id // e.g. "sales_invoice", "purchase_order"
+  prefix      String // e.g. "INV", "PO"
+  lastNumber  Int    @default(0)
+  padding     Int    @default(3)
+  yearInfix   Boolean @default(true) // INV-2609-041 style (yyMM)
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────── Parties ─────────────────────────────
+
+model Buyer {
+  id            Int         @id @default(autoincrement())
+  code          String      @unique // BUY-001
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  paymentTerms  String? // "Cash", "30 days"...
+  creditLimit   Decimal     @default(0) @db.Decimal(15, 2)
+  status        PartyStatus @default(ACTIVE)
+  outstanding   Decimal     @default(0) @db.Decimal(15, 2) // maintained by ledger service
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  ledgerEntries    BuyerLedgerEntry[]
+  salesOrders      SalesOrder[]
+  salesInvoices    SalesInvoice[]
+  deliveryChalans  DeliveryChalan[]
+  salesReturns     SalesReturn[]
+  collections      PaymentCollection[]
+
+  @@index([status])
+}
+
+model Supplier {
+  id            Int         @id @default(autoincrement())
+  code          String      @unique // SUP-011
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  paymentTerms  String?
+  status        PartyStatus @default(ACTIVE)
+  payable       Decimal     @default(0) @db.Decimal(15, 2) // maintained by ledger service
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  ledgerEntries     SupplierLedgerEntry[]
+  purchaseOrders    PurchaseOrder[]
+  purchaseInvoices  PurchaseInvoice[]
+  payments          SupplierPayment[]
+
+  @@index([status])
+}
+
+// Auto-generated party ledgers — one row per financial event.
+// balanceAfter = running balance after this entry (per party).
+model BuyerLedgerEntry {
+  id           Int      @id @default(autoincrement())
+  buyerId      Int
+  date         DateTime @default(now())
+  refType      String // "sales_invoice", "collection", "sales_return", "adjustment"
+  refId        Int
+  refNo        String?
+  description  String?
+  debit        Decimal  @default(0) @db.Decimal(15, 2) // increases receivable
+  credit       Decimal  @default(0) @db.Decimal(15, 2) // decreases receivable
+  balanceAfter Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt    DateTime @default(now())
+
+  buyer Buyer @relation(fields: [buyerId], references: [id])
+
+  @@index([buyerId, date])
+  @@index([refType, refId])
+}
+
+model SupplierLedgerEntry {
+  id           Int      @id @default(autoincrement())
+  supplierId   Int
+  date         DateTime @default(now())
+  refType      String // "purchase_invoice", "payment", "purchase_return", "adjustment"
+  refId        Int
+  refNo        String?
+  description  String?
+  debit        Decimal  @default(0) @db.Decimal(15, 2) // decreases payable
+  credit       Decimal  @default(0) @db.Decimal(15, 2) // increases payable
+  balanceAfter Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt    DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId, date])
+  @@index([refType, refId])
+}
+
+// ───────────────────────────── Catalog ───────────────────────────────
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String
+  code        String   @unique
+  description String?
+  taxRateId   Int?
+  createdAt   DateTime @default(now())
+
+  taxRate  TaxRate?   @relation(fields: [taxRateId], references: [id])
+  products Product[]
+}
+
+model Unit {
+  id       Int    @id @default(autoincrement())
+  name     String @unique // "Piece", "Meter", "Roll", "Gross"
+  code     String @unique // "PCS", "MTR"
+  products Product[]
+}
+
+model TaxRate {
+  id            Int         @id @default(autoincrement())
+  name          String // "Standard VAT", "Zero-rated export"
+  code          String      @unique // "VAT-STD"
+  ratePercent   Decimal     @db.Decimal(5, 2)
+  type          TaxRateType @default(BOTH)
+  effectiveFrom DateTime    @default(now())
+  status        PartyStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+
+  categories          Category[]
+  products            Product[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  purchaseInvoiceItems PurchaseInvoiceItem[]
+  salesOrderItems     SalesOrderItem[]
+  salesInvoiceItems   SalesInvoiceItem[]
+}
+
+model Product {
+  id            Int         @id @default(autoincrement())
+  sku           String      @unique // "BTN-SHL-18-WHT"
+  name          String
+  categoryId    Int
+  unitId        Int
+  color         String?
+  size          String?
+  purchasePrice Decimal     @db.Decimal(15, 2)
+  salesPrice    Decimal     @db.Decimal(15, 2)
+  minStock      Decimal     @default(0) @db.Decimal(15, 3)
+  taxRateId     Int? // overrides category rate when set
+  status        PartyStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  category             Category             @relation(fields: [categoryId], references: [id])
+  unit                 Unit                 @relation(fields: [unitId], references: [id])
+  taxRate              TaxRate?             @relation(fields: [taxRateId], references: [id])
+  stockBalances        StockBalance[]
+  stockMovements       StockMovement[]
+  stockAdjustments     StockAdjustment[]
+  stockTransfers       StockTransfer[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  purchaseInvoiceItems PurchaseInvoiceItem[]
+  salesOrderItems      SalesOrderItem[]
+  salesInvoiceItems    SalesInvoiceItem[]
+  deliveryChalanItems  DeliveryChalanItem[]
+  salesReturnItems     SalesReturnItem[]
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+// ─────────────────────────── Warehouses ──────────────────────────────
+
+model Warehouse {
+  id        Int         @id @default(autoincrement())
+  code      String      @unique // "WH-01"
+  name      String
+  location  String?
+  manager   String?
+  status    PartyStatus @default(ACTIVE)
+  createdAt DateTime    @default(now())
+
+  stockBalances     StockBalance[]
+  stockMovements    StockMovement[]
+  stockAdjustments  StockAdjustment[]
+  transfersFrom     StockTransfer[]       @relation("FromWarehouse")
+  transfersTo       StockTransfer[]       @relation("ToWarehouse")
+  purchaseInvoices  PurchaseInvoice[]
+  deliveryChalans   DeliveryChalan[]
+  salesReturns      SalesReturn[]
+}
+
+// Current stock per product per warehouse — the live stock table.
+model StockBalance {
+  id          Int     @id @default(autoincrement())
+  productId   Int
+  warehouseId Int
+  quantity    Decimal @default(0) @db.Decimal(15, 3)
+  reserved    Decimal @default(0) @db.Decimal(15, 3)
+  updatedAt   DateTime @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId])
+  @@index([warehouseId])
+}
+
+// Immutable stock in/out log — every quantity change lands here.
+model StockMovement {
+  id           Int          @id @default(autoincrement())
+  productId    Int
+  warehouseId  Int
+  type         MovementType
+  quantity     Decimal      @db.Decimal(15, 3) // signed: +in / -out
+  unitCost     Decimal?     @db.Decimal(15, 2)
+  refType      String? // "purchase_invoice", "delivery_chalan", "sales_return", "adjustment", "transfer"
+  refId        Int?
+  refNo        String?
+  reason       String?
+  qtyAfter     Decimal?     @db.Decimal(15, 3) // balance snapshot after move
+  createdById  Int?
+  createdAt    DateTime     @default(now())
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([refType, refId])
+}
+
+model StockAdjustment {
+  id               Int            @id @default(autoincrement())
+  adjNo            String         @unique
+  productId        Int
+  warehouseId      Int
+  direction        MovementType   @default(ADJUST)
+  quantity         Decimal        @db.Decimal(15, 3) // signed
+  unitCost         Decimal?       @db.Decimal(15, 2)
+  reason           String
+  reference        String?
+  approvalStatus   ApprovalStatus @default(NONE)
+  createdById      Int?
+  createdAt        DateTime       @default(now())
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+}
+
+model StockTransfer {
+  id             Int            @id @default(autoincrement())
+  transferNo     String         @unique
+  fromWarehouseId Int
+  toWarehouseId   Int
+  productId      Int
+  quantity       Decimal        @db.Decimal(15, 3)
+  transferDate   DateTime       @default(now())
+  notes          String?
+  status         TransferStatus @default(PENDING)
+  approvalStatus ApprovalStatus @default(AWAITING_APPROVAL)
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  fromWarehouse Warehouse @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id])
+}
+
+// ─────────────────────────── Purchase ────────────────────────────────
+
+model PurchaseOrder {
+  id             Int            @id @default(autoincrement())
+  poNo           String         @unique // "PO-2609-066"
+  supplierId     Int
+  orderDate      DateTime
+  expectedDate   DateTime?
+  status         OrderStatus    @default(PENDING)
+  approvalStatus ApprovalStatus @default(NONE)
+  subtotal       Decimal        @default(0) @db.Decimal(15, 2)
+  taxTotal       Decimal        @default(0) @db.Decimal(15, 2)
+  total          Decimal        @default(0) @db.Decimal(15, 2)
+  notes          String?
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  supplier         Supplier          @relation(fields: [supplierId], references: [id])
+  items            PurchaseOrderItem[]
+  purchaseInvoices PurchaseInvoice[]
+
+  @@index([supplierId, orderDate])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id          Int     @id @default(autoincrement())
+  orderId     Int
+  productId   Int
+  quantity    Decimal @db.Decimal(15, 3)
+  rate        Decimal @db.Decimal(15, 2)
+  taxRateId   Int?
+  taxAmount   Decimal @default(0) @db.Decimal(15, 2)
+  total       Decimal @db.Decimal(15, 2)
+  receivedQty Decimal @default(0) @db.Decimal(15, 3) // partial receipt tracking
+
+  order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id])
+  taxRate TaxRate?      @relation(fields: [taxRateId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Supplier bill — posting it increases stock + payable.
+model PurchaseInvoice {
+  id             Int            @id @default(autoincrement())
+  invNo          String         @unique // "PI-2609-091"
+  orderId        Int? // source PO, if converted
+  supplierId     Int
+  warehouseId    Int
+  invoiceDate    DateTime
+  subtotal       Decimal        @default(0) @db.Decimal(15, 2)
+  taxTotal       Decimal        @default(0) @db.Decimal(15, 2)
+  total          Decimal        @default(0) @db.Decimal(15, 2)
+  paidAmount     Decimal        @default(0) @db.Decimal(15, 2)
+  status         InvoiceStatus  @default(UNPAID)
+  approvalStatus ApprovalStatus @default(NONE)
+  notes          String?
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  order     PurchaseOrder?        @relation(fields: [orderId], references: [id])
+  supplier  Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
+  items     PurchaseInvoiceItem[]
+  payments  SupplierPayment[]
+
+  @@index([supplierId, invoiceDate])
+  @@index([invoiceDate])
+}
+
+model PurchaseInvoiceItem {
+  id        Int     @id @default(autoincrement())
+  invoiceId Int
+  productId Int
+  quantity  Decimal @db.Decimal(15, 3)
+  rate      Decimal @db.Decimal(15, 2)
+  taxRateId Int?
+  taxAmount Decimal @default(0) @db.Decimal(15, 2)
+  total     Decimal @db.Decimal(15, 2)
+
+  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  taxRate TaxRate?        @relation(fields: [taxRateId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
+}
+
+// Supplier payment — reduces payable, debits cash/bank account.
+model SupplierPayment {
+  id             Int            @id @default(autoincrement())
+  paymentNo      String         @unique // "PAY-2609-012"
+  supplierId     Int
+  invoiceId      Int? // optional direct allocation
+  accountId      Int
+  date           DateTime
+  amount         Decimal        @db.Decimal(15, 2)
+  method         String? // "Bank transfer", "Cheque", "Cash"
+  reference      String?
+  notes          String?
+  approvalStatus ApprovalStatus @default(NONE)
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+
+  supplier Supplier        @relation(fields: [supplierId], references: [id])
+  invoice  PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
+  account  CashAccount     @relation(fields: [accountId], references: [id])
+
+  @@index([supplierId, date])
+}
+
+// ─────────────────────────── Sales ───────────────────────────────────
+
+model SalesOrder {
+  id             Int            @id @default(autoincrement())
+  soNo           String         @unique // "SO-2609-041"
+  buyerId        Int
+  orderDate      DateTime
+  dueDate        DateTime?
+  status         OrderStatus    @default(PENDING)
+  approvalStatus ApprovalStatus @default(NONE)
+  discount       Decimal        @default(0) @db.Decimal(15, 2)
+  subtotal       Decimal        @default(0) @db.Decimal(15, 2)
+  taxTotal       Decimal        @default(0) @db.Decimal(15, 2)
+  total          Decimal        @default(0) @db.Decimal(15, 2)
+  notes          String?
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  buyer           Buyer            @relation(fields: [buyerId], references: [id])
+  items           SalesOrderItem[]
+  deliveryChalans DeliveryChalan[]
+  salesInvoices   SalesInvoice[]
+
+  @@index([buyerId, orderDate])
+  @@index([status])
+}
+
+model SalesOrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Decimal @db.Decimal(15, 3)
+  rate      Decimal @db.Decimal(15, 2)
+  taxRateId Int?
+  taxAmount Decimal @default(0) @db.Decimal(15, 2)
+  total     Decimal @db.Decimal(15, 2)
+  deliveredQty Decimal @default(0) @db.Decimal(15, 3)
+
+  order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+  taxRate TaxRate?   @relation(fields: [taxRateId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Delivery chalan — posting it reduces stock.
+model DeliveryChalan {
+  id          Int      @id @default(autoincrement())
+  dcNo        String   @unique // "DC-2609-028"
+  salesOrderId Int?
+  buyerId     Int
+  warehouseId Int
+  date        DateTime
+  driverName  String?
+  vehicleNo   String?
+  notes       String?
+  createdById Int?
+  createdAt   DateTime @default(now())
+
+  salesOrder SalesOrder?        @relation(fields: [salesOrderId], references: [id])
+  buyer      Buyer              @relation(fields: [buyerId], references: [id])
+  warehouse  Warehouse          @relation(fields: [warehouseId], references: [id])
+  items      DeliveryChalanItem[]
+  salesInvoices SalesInvoice[]
+
+  @@index([buyerId, date])
+}
+
+model DeliveryChalanItem {
+  id        Int     @id @default(autoincrement())
+  chalanId  Int
+  productId Int
+  quantity  Decimal @db.Decimal(15, 3)
+
+  chalan  DeliveryChalan @relation(fields: [chalanId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id])
+
+  @@index([chalanId])
+}
+
+// Sales invoice — increases receivable; can link to SO and/or chalan.
+model SalesInvoice {
+  id             Int            @id @default(autoincrement())
+  invNo          String         @unique // "INV-2609-041"
+  salesOrderId   Int?
+  chalanId       Int?
+  buyerId        Int
+  invoiceDate    DateTime
+  dueDate        DateTime?
+  vatMode        VatMode        @default(EXCLUSIVE)
+  subtotal       Decimal        @default(0) @db.Decimal(15, 2)
+  discount       Decimal        @default(0) @db.Decimal(15, 2)
+  taxTotal       Decimal        @default(0) @db.Decimal(15, 2)
+  total          Decimal        @default(0) @db.Decimal(15, 2)
+  paidAmount     Decimal        @default(0) @db.Decimal(15, 2)
+  status         InvoiceStatus  @default(UNPAID)
+  approvalStatus ApprovalStatus @default(NONE)
+  notes          String?
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  salesOrder SalesOrder?           @relation(fields: [salesOrderId], references: [id])
+  chalan     DeliveryChalan?       @relation(fields: [chalanId], references: [id])
+  buyer      Buyer                 @relation(fields: [buyerId], references: [id])
+  items      SalesInvoiceItem[]
+  returns    SalesReturn[]
+  collections PaymentCollection[]
+
+  @@index([buyerId, invoiceDate])
+  @@index([invoiceDate])
+}
+
+model SalesInvoiceItem {
+  id        Int     @id @default(autoincrement())
+  invoiceId Int
+  productId Int
+  quantity  Decimal @db.Decimal(15, 3)
+  rate      Decimal @db.Decimal(15, 2)
+  taxRateId Int?
+  taxAmount Decimal @default(0) @db.Decimal(15, 2)
+  total     Decimal @db.Decimal(15, 2)
+
+  invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id])
+  taxRate TaxRate?     @relation(fields: [taxRateId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
+}
+
+model SalesReturn {
+  id          Int      @id @default(autoincrement())
+  returnNo    String   @unique // "SR-2609-004"
+  invoiceId   Int
+  buyerId     Int
+  warehouseId Int
+  date        DateTime
+  reason      String?
+  total       Decimal  @default(0) @db.Decimal(15, 2)
+  createdById Int?
+  createdAt   DateTime @default(now())
+
+  invoice   SalesInvoice       @relation(fields: [invoiceId], references: [id])
+  buyer     Buyer              @relation(fields: [buyerId], references: [id])
+  warehouse Warehouse          @relation(fields: [warehouseId], references: [id])
+  items     SalesReturnItem[]
+}
+
+model SalesReturnItem {
+  id        Int     @id @default(autoincrement())
+  returnId  Int
+  productId Int
+  quantity  Decimal @db.Decimal(15, 3)
+  rate      Decimal @db.Decimal(15, 2)
+  total     Decimal @db.Decimal(15, 2)
+
+  return  SalesReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+
+  @@index([returnId])
+}
+
+// Buyer payment collection — reduces receivable, credits cash/bank.
+model PaymentCollection {
+  id             Int            @id @default(autoincrement())
+  collectionNo   String         @unique // "RCV-2609-055"
+  buyerId        Int
+  invoiceId      Int? // optional direct allocation
+  accountId      Int
+  date           DateTime
+  amount         Decimal        @db.Decimal(15, 2)
+  method         String?
+  reference      String?
+  notes          String?
+  approvalStatus ApprovalStatus @default(NONE)
+  createdById    Int?
+  createdAt      DateTime       @default(now())
+
+  buyer   Buyer         @relation(fields: [buyerId], references: [id])
+  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id])
+  account CashAccount   @relation(fields: [accountId], references: [id])
+
+  @@index([buyerId, date])
+}
+
+// ─────────────────────────── Cash & Bank ─────────────────────────────
+
+model CashAccount {
+  id             Int         @id @default(autoincrement())
+  name           String // "City Bank · Current", "Head office cash"
+  type           AccountType
+  bankName       String?
+  accountNo      String?
+  openingBalance Decimal     @default(0) @db.Decimal(15, 2)
+  balance        Decimal     @default(0) @db.Decimal(15, 2) // maintained by service
+  status         PartyStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now())
+
+  transactions      CashTransaction[]   @relation("Account")
+  transfersIn       CashTransaction[]   @relation("ToAccount")
+  supplierPayments  SupplierPayment[]
+  collections       PaymentCollection[]
+}
+
+// Unified cash/bank ledger — manual entries + auto-entries from
+// collections and supplier payments (linked via refType/refId).
+model CashTransaction {
+  id           Int      @id @default(autoincrement())
+  txnNo        String   @unique // "TXN-2609-181"
+  accountId    Int
+  toAccountId  Int? // for TRANSFER destination
+  type         TxnType
+  amount       Decimal  @db.Decimal(15, 2)
+  date         DateTime
+  particulars  String?
+  reference    String?
+  refType      String? // "collection", "supplier_payment", null for manual
+  refId        Int?
+  balanceAfter Decimal? @db.Decimal(15, 2)
+  createdById  Int?
+  createdAt    DateTime @default(now())
+
+  account   CashAccount  @relation("Account", fields: [accountId], references: [id])
+  toAccount CashAccount? @relation("ToAccount", fields: [toAccountId], references: [id])
+
+  @@index([accountId, date])
+  @@index([date])
+  @@index([refType, refId])
+}
+
+// ─────────────────────────── Approvals ───────────────────────────────
+
+model ApprovalRequest {
+  id          Int                @id @default(autoincrement())
+  entityType  ApprovalEntityType
+  entityId    Int
+  entityRef   String? // display ref e.g. "PO-2609-066"
+  amount      Decimal?           @db.Decimal(15, 2)
+  reason      String?
+  status      ApprovalStatus     @default(AWAITING_APPROVAL)
+  requestedById Int?
+  decidedById   Int?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime         @default(now())
+
+  requestedBy User? @relation("RequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User? @relation("DecidedBy", fields: [decidedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+}
+
+// ─────────────────────────── Audit log ───────────────────────────────
+
+model AuditLog {
+  id        Int         @id @default(autoincrement())
+  userId    Int?
+  action    AuditAction
+  module    String // "Purchase", "Products", "Cash & Bank"...
+  recordId  String? // entity ref or id
+  before    Json?
+  after     Json?
+  ipAddress String?
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([module, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+// ─────────────────── Accounting (auto-posted GL) ─────────────────────
+// Journal entries are written automatically by transaction services —
+// never manually. Powers P&L, trial balance, GL, balance sheet.
+
+model Account {
+  id       Int             @id @default(autoincrement())
+  code     String          @unique // "1100", "4100"...
+  name     String // "Cash in hand", "Sales revenue"
+  category AccountCategory
+  isSystem Boolean         @default(false) // seeded accounts can't be deleted
+
+  lines JournalLine[]
+}
+
+model JournalEntry {
+  id        Int      @id @default(autoincrement())
+  entryNo   String   @unique // "JE-2609-201"
+  date      DateTime
+  memo      String?
+  refType   String? // "sales_invoice", "purchase_invoice", "collection"...
+  refId     Int?
+  createdAt DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@index([date])
+  @@index([refType, refId])
+}
+
+model JournalLine {
+  id        Int     @id @default(autoincrement())
+  entryId   Int
+  accountId Int
+  debit     Decimal @default(0) @db.Decimal(15, 2)
+  credit    Decimal @default(0) @db.Decimal(15, 2)
+  partyType String? // "buyer" | "supplier" — subledger tagging
+  partyId   Int?
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@index([entryId])
+  @@index([accountId])
+  @@index([partyType, partyId])
+}

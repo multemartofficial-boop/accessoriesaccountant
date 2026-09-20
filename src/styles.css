@@ -202,4 +202,17 @@
 @media print {
   [data-sidebar="sidebar"], header, nav, button { display: none !important; }
   main { padding: 0 !important; }
+
+  /* Print only the document preview, not the composer/app chrome. */
+  body * { visibility: hidden; }
+  #print-document, #print-document * { visibility: visible; }
+  #print-document {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+    margin: 0;
+  }
 }
