@@ -9,6 +9,7 @@
     "typecheck": "tsc",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:resync": "tsx prisma/resync-sequences.ts",
     "db:test": "node test-db.js"
