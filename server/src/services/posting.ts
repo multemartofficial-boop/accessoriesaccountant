@@ -243,6 +243,13 @@ export async function postSalesReturn(tx: Tx, returnId: number) {
     credit: ret.total,
   });
 
+  // Restocking reverses the cost side too: Inventory up, COGS down.
+  let cogs = 0;
+  for (const item of ret.items) {
+    const product = await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
+    cogs += Number(product.purchasePrice) * Number(item.quantity);
+  }
+
   await postJournal(tx, {
     date: ret.date,
     memo: `Sales return ${ret.returnNo}`,
@@ -251,6 +258,12 @@ export async function postSalesReturn(tx: Tx, returnId: number) {
     lines: [
       { accountCode: "5200", debit: Number(ret.total) },
       { accountCode: "1300", credit: Number(ret.total), partyType: "buyer", partyId: ret.buyerId },
+      ...(cogs > 0
+        ? [
+            { accountCode: "1200", debit: cogs },
+            { accountCode: "5100", credit: cogs },
+          ]
+        : []),
     ],
   });
 }
@@ -341,6 +354,9 @@ export async function applyCashTransaction(
     accountId: number;
     toAccountId?: number;
     type: "RECEIPT" | "PAYMENT" | "TRANSFER" | "ADJUSTMENT";
+    // Only meaningful for ADJUSTMENT: "IN" increases the balance,
+    // anything else (default) decreases it.
+    direction?: "IN" | "OUT";
     amount: number;
     date?: Date;
     particulars?: string;
@@ -354,10 +370,15 @@ export async function applyCashTransaction(
     throw new ApiError(400, "Transaction amount must be a positive number");
   }
   const account = await tx.cashAccount.findUniqueOrThrow({ where: { id: input.accountId } });
-  const delta = input.type === "RECEIPT" ? input.amount : -input.amount;
+  const inbound =
+    input.type === "RECEIPT" || (input.type === "ADJUSTMENT" && input.direction === "IN");
+  const delta = inbound ? input.amount : -input.amount;
   const newBalance = account.balance.plus(delta);
 
-  const txnNo = await nextDocNumber(tx, "cash_transaction", "TXN");
+  let txnNo = await nextDocNumber(tx, "cash_transaction", "TXN");
+  // Same "-IN" convention as transfer mirror legs: marks the row as inbound
+  // for the ledger view and the cash integrity check.
+  if (input.type === "ADJUSTMENT" && input.direction === "IN") txnNo = `${txnNo}-IN`;
   const txn = await tx.cashTransaction.create({
     data: {
       txnNo,

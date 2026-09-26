@@ -63,8 +63,6 @@ export function SettingsScreen() {
         eyebrow="Administration"
         title="Settings"
         description="Company identity, access control and system-wide defaults."
-        action="Save changes"
-        onAction={() => toast.success("Settings saved")}
       />
       <div className="grid gap-5 xl:grid-cols-[220px_1fr]">
         <nav className="h-fit rounded-lg border bg-card p-2 shadow-card">
@@ -138,6 +136,13 @@ export function SettingsScreen() {
                     doc_invoice_footer: v["Invoice footer"],
                     doc_chalan_notes: v["Chalan default notes"],
                     doc_chalan_type: v["Chalan type"],
+                    doc_proforma_notes: v["Proforma notes"],
+                    bank_name: v["Bank name"],
+                    bank_holder: v["Account holder"],
+                    bank_account_no: v["A/C no."],
+                    bank_swift: v["Swift no."],
+                    bank_routing: v["Routing no."],
+                    bank_address: v["Bank address"],
                   }),
                   "Document templates saved",
                 );
@@ -187,6 +192,54 @@ export function SettingsScreen() {
                   options={["Delivery", "Job work", "Sample", "Returnable"]}
                   defaultValue={settings?.["doc_chalan_type"] ?? "Delivery"}
                 />
+              </div>
+              <div className="border-t pt-4">
+                <p className="mb-3 text-[12px] font-semibold">
+                  Proforma invoice — bank details & notes
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Bank name"
+                    name="Bank name"
+                    defaultValue={settings?.["bank_name"]}
+                  />
+                  <Field
+                    label="Account holder"
+                    name="Account holder"
+                    defaultValue={settings?.["bank_holder"]}
+                  />
+                  <Field
+                    label="A/C no."
+                    name="A/C no."
+                    defaultValue={settings?.["bank_account_no"]}
+                  />
+                  <Field
+                    label="Swift no."
+                    name="Swift no."
+                    defaultValue={settings?.["bank_swift"]}
+                  />
+                  <Field
+                    label="Routing no."
+                    name="Routing no."
+                    defaultValue={settings?.["bank_routing"]}
+                  />
+                  <Field
+                    label="Bank address"
+                    name="Bank address"
+                    defaultValue={settings?.["bank_address"]}
+                  />
+                  <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
+                    <span>Proforma notes (numbered list printed above the signatures)</span>
+                    <Textarea
+                      name="Proforma notes"
+                      defaultValue={
+                        settings?.["doc_proforma_notes"] ??
+                        "1. Complain should be brought to our notice in writing/mail within 7 days of delivery of the goods.\n2. Payment should be made only by RTGS / bank transfer.\n3. Goods once delivered will not be taken back."
+                      }
+                      className="rounded-lg text-[13px] shadow-none"
+                    />
+                  </label>
+                </div>
               </div>
               <div className="flex justify-end">
                 <Button type="submit" size="sm">
@@ -312,9 +365,27 @@ export function SettingsScreen() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => toast.success("Backup requested")}
+                  onClick={async () => {
+                    try {
+                      const { getToken } = await import("@/lib/api");
+                      const res = await fetch("/api/system/backup", {
+                        headers: { Authorization: `Bearer ${getToken()}` },
+                      });
+                      if (!res.ok) throw new Error(`Backup failed (${res.status})`);
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `garmenttrade-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast.success("Backup downloaded");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Backup failed");
+                    }
+                  }}
                 >
-                  <Download /> Request database backup
+                  <Download /> Download database backup
                 </Button>
               </div>
             </div>

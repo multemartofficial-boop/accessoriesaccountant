@@ -69,7 +69,7 @@ export function PageHeader({
           {description}
         </p>
       </div>
-      {action && (
+      {action && onAction && (
         <Button
           size="sm"
           className="h-11 w-full rounded-lg px-3.5 text-xs shadow-sm sm:h-9 sm:w-auto"

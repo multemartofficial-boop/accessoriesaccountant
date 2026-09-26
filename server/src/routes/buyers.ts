@@ -71,14 +71,19 @@ buyersRouter.get(
 
     const from = req.query.from ? new Date(String(req.query.from)) : new Date("1970-01-01");
     const to = req.query.to ? new Date(String(req.query.to)) : new Date();
-    const entries = await prisma.buyerLedgerEntry.findMany({
-      where: { buyerId: id, date: { gte: from, lte: to } },
-      orderBy: [{ date: "asc" }, { id: "asc" }],
-    });
-    const opening = entries.length
-      ? entries[0]!.balanceAfter.minus(entries[0]!.debit).plus(entries[0]!.credit)
-      : buyer.outstanding;
-    res.json({ buyer, opening, entries, closing: buyer.outstanding, from, to });
+    const [prior, entries] = await Promise.all([
+      prisma.buyerLedgerEntry.findFirst({
+        where: { buyerId: id, date: { lt: from } },
+        orderBy: [{ date: "desc" }, { id: "desc" }],
+      }),
+      prisma.buyerLedgerEntry.findMany({
+        where: { buyerId: id, date: { gte: from, lte: to } },
+        orderBy: [{ date: "asc" }, { id: "asc" }],
+      }),
+    ]);
+    const opening = prior?.balanceAfter ?? 0;
+    const closing = entries.length ? entries[entries.length - 1]!.balanceAfter : opening;
+    res.json({ buyer, opening, entries, closing, from, to });
   }),
 );
 

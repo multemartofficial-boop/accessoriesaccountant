@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Check, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../ui";
@@ -30,6 +31,7 @@ const entityLabel: Record<string, string> = {
 
 export function ApprovalsScreen() {
   const [selected, setSelected] = useState(0);
+  const navigate = useNavigate();
   const save = useSave();
   const { data: queue } = useData<ApprovalRequest[]>(["approvals"], "/approvals");
   const items = queue ?? [];
@@ -45,7 +47,7 @@ export function ApprovalsScreen() {
         title="Approval workflow"
         description="Review purchase, sales, payment and stock requests awaiting authorization."
         action="Approval rules"
-        onAction={() => {}}
+        onAction={() => navigate({ to: "/settings" })}
       />
       <div className="grid min-h-[590px] overflow-hidden rounded-lg border bg-card shadow-card lg:grid-cols-[380px_1fr]">
         <div className="border-r bg-surface-subtle">

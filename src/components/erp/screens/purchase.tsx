@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DataTable, Field, MetricStrip, PageHeader, Panel, SelectField, TabsBar } from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Field, MetricStrip, PageHeader, Panel, SelectField, TabsBar } from "../ui";
 import { api } from "@/lib/api";
 import {
   EntitySelect,
@@ -87,13 +88,18 @@ export function PurchaseScreen() {
     .filter((i) => new Date(i.invoiceDate).getMonth() === month)
     .reduce((s, i) => s + num(i.total), 0);
 
-  const toRow = (o: PurchaseOrder) => ({
-    ref: o.poNo,
-    party: o.supplier.name,
-    date: fmtDate(o.orderDate),
-    status: o.approvalStatus === "AWAITING_APPROVAL" ? "Awaiting approval" : statusLabel(o.status),
-    amount: money(o.total),
-  });
+  function statusClass(value: string) {
+    const v = value.toLowerCase();
+    if (
+      ["paid", "approved", "active", "received", "completed", "in stock"].some((s) => v.includes(s))
+    )
+      return "border-success/25 bg-success-soft text-success";
+    if (["pending", "partial", "low", "review", "awaiting"].some((s) => v.includes(s)))
+      return "border-warning/25 bg-warning-soft text-warning";
+    if (["overdue", "declined", "cancelled", "out of stock"].some((s) => v.includes(s)))
+      return "border-destructive/20 bg-destructive-soft text-destructive";
+    return "border-border bg-muted text-muted-foreground";
+  }
 
   return (
     <>
@@ -164,25 +170,105 @@ export function PurchaseScreen() {
             onDone={() => setTab("Purchase orders")}
           />
         ) : (
-          <DataTable
-            columns={[
-              { key: "ref", label: "Reference" },
-              { key: "party", label: "Party" },
-              { key: "date", label: "Date" },
-              { key: "status", label: "Status", status: true },
-              { key: "amount", label: "Amount", align: "right" },
-            ]}
-            rows={(tab === "Pending PO" ? (pending ?? []) : (orders ?? [])).map(toRow)}
-            onRowClick={() => setTab("PO detail")}
-            onDelete={(row) =>
-              save(
-                api.del(
-                  `/purchase/orders/${(orders ?? []).find((o) => o.poNo === row["ref"])?.id}`,
-                ),
-                "Purchase order cancelled",
-              )
-            }
-          />
+          <div className="bg-workspace/40 p-4">
+            <div className="space-y-3">
+              {(tab === "Pending PO" ? (pending ?? []) : (orders ?? [])).map((o) => (
+                <div
+                  key={o.id}
+                  className="rounded-lg border bg-card p-4 shadow-card"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold">{o.poNo}</div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {o.supplier.name} · {fmtDate(o.orderDate)}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-1.5">
+                      <Badge
+                        variant="outline"
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold shadow-none ${statusClass(o.approvalStatus === "AWAITING_APPROVAL" ? "awaiting" : o.status)}`}
+                      >
+                        {o.approvalStatus === "AWAITING_APPROVAL"
+                          ? "Awaiting approval"
+                          : statusLabel(o.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="mt-3 overflow-hidden rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-table-head text-left text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                          <th className="px-3 py-2">Item</th>
+                          <th className="w-24 px-3 py-2 text-right">Qty</th>
+                          <th className="w-24 px-3 py-2 text-right">Rate</th>
+                          <th className="w-28 px-3 py-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {o.items.map((item, idx) => {
+                          const p = products?.find((x) => x.id === item.productId);
+                          return (
+                            <tr key={idx} className="border-b last:border-0">
+                              <td className="px-3 py-1.5">
+                                {p?.name ?? `Product #${item.productId}`}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {item.quantity}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {money(item.rate)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+                                {money(num(item.quantity) * num(item.rate))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Cancel order"
+                      className="h-7 w-7 text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        save(api.del(`/purchase/orders/${o.id}`), "Purchase order cancelled");
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                    <div className="text-[13px] font-semibold tabular-nums">
+                      Total: {money(o.total)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(tab === "Pending PO" ? (pending ?? []) : (orders ?? [])).length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No records match your search.
+                </div>
+              )}
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border bg-card p-3 shadow-card">
+              <span className="text-[13px] font-semibold text-muted-foreground">
+                {(tab === "Pending PO" ? (pending ?? []) : (orders ?? [])).length} orders · Running
+                total
+              </span>
+              <span className="text-[13px] font-bold tabular-nums">
+                {money(
+                  (tab === "Pending PO" ? (pending ?? []) : (orders ?? [])).reduce(
+                    (s, o) => s + num(o.total),
+                    0,
+                  ),
+                )}
+              </span>
+            </div>
+          </div>
         )}
       </Panel>
     </>

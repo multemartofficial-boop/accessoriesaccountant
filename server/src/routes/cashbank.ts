@@ -66,7 +66,8 @@ cashBankRouter.post(
   "/transactions",
   requireRole("ADMIN", "MANAGER"),
   asyncHandler(async (req, res) => {
-    const { accountId, toAccountId, type, amount, date, particulars, reference } = req.body ?? {};
+    const { accountId, toAccountId, type, direction, amount, date, particulars, reference } =
+      req.body ?? {};
     if (!accountId || !type || !amount) badRequest("accountId, type and amount are required");
     if (type === "TRANSFER" && !toAccountId) badRequest("toAccountId is required for transfers");
 
@@ -75,6 +76,7 @@ cashBankRouter.post(
         accountId: Number(accountId),
         toAccountId: toAccountId ? Number(toAccountId) : undefined,
         type,
+        direction: direction === "IN" ? "IN" : "OUT",
         amount: Number(amount),
         date: date ? new Date(date) : new Date(),
         particulars,

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Mail, MapPin, Phone, UserRound } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ActionDialog,
@@ -50,6 +51,14 @@ interface HistoryInvoice {
   status: string;
   total: string;
   paidAmount: string;
+}
+
+interface Payment {
+  id: number;
+  paymentNo: string;
+  date: string;
+  amount: string;
+  method?: string;
 }
 
 const partyConfig = {
@@ -104,13 +113,13 @@ export function PartyScreen({ kind }: { kind: "buyer" | "supplier" }) {
     `${config.base}/${active?.id}/history`,
     Boolean(active?.id),
   );
-  const { data: payments } = useData<
-    { id: number; paymentNo: string; date: string; amount: string; method?: string }[]
-  >(
+  const { data: payments } = useData<Payment[]>(
     [kind, active?.id, "payments"],
     `${config.base}/${active?.id}/payments`,
     Boolean(active?.id) && kind === "supplier",
   );
+
+  const party = active ? { ...active, ...(detail ?? {}) } : undefined;
 
   const fields = [
     { label: "Name", name: "name", required: true },
@@ -171,77 +180,28 @@ export function PartyScreen({ kind }: { kind: "buyer" | "supplier" }) {
               save(api.del(`${config.base}/${row["id"]}`), `${config.entity} removed`)
             }
           />
-        ) : tab === "Profile" && active ? (
+        ) : tab === "Profile" && party ? (
           <PartyProfile
             kind={kind}
-            party={{ ...active, ...(detail ?? {}) }}
+            party={party}
             onEdit={() => {
-              setEditing(active);
+              setEditing(active ?? null);
               setOpen(true);
             }}
           />
+        ) : tab === "Sales history" || tab === "Purchase history" ? (
+          <HistoryTable kind={kind} history={history} />
+        ) : tab === "Ledger" ? (
+          <LedgerTable ledger={ledger} />
+        ) : tab === "Statement" ? (
+          <StatementCard party={party} ledger={ledger} />
+        ) : tab === "Payments" ? (
+          <PaymentsCard party={party} payments={payments} />
+        ) : tab === "Outstanding" || tab === "Payable" ? (
+          <OutstandingCard kind={kind} party={party} history={history} />
         ) : (
-          <div className="p-4">
-            <MiniStats
-              items={[
-                {
-                  label: kind === "buyer" ? "Outstanding" : "Payable",
-                  value: money(kind === "buyer" ? active?.outstanding : active?.payable),
-                  tone: "down",
-                },
-                {
-                  label: "Open documents",
-                  value: String(detail?.openInvoices ?? 0),
-                  detail: "Across current account",
-                },
-                {
-                  label: "Last payment",
-                  value: money(detail?.lastPayment?.amount),
-                  detail: fmtDate(detail?.lastPayment?.date),
-                  tone: "up",
-                },
-              ]}
-            />
-            <div className="mt-4">
-              <DataTable
-                columns={[
-                  { key: "ref", label: "Reference" },
-                  { key: "details", label: "Details" },
-                  { key: "date", label: "Date" },
-                  { key: "debit", label: "Debit", align: "right" },
-                  { key: "credit", label: "Credit", align: "right" },
-                  { key: "balance", label: "Balance", align: "right" },
-                ]}
-                rows={
-                  (tab === "Ledger" || tab === "Statement"
-                    ? (ledger ?? []).map((e) => ({
-                        ref: e.refNo ?? e.refType,
-                        details: e.description ?? statusLabel(e.refType),
-                        date: fmtDate(e.date),
-                        debit: num(e.debit) ? money(e.debit) : "—",
-                        credit: num(e.credit) ? money(e.credit) : "—",
-                        balance: money(e.balanceAfter),
-                      }))
-                    : tab === "Payments"
-                      ? (payments ?? []).map((p) => ({
-                          ref: p.paymentNo,
-                          details: p.method ?? "Payment",
-                          date: fmtDate(p.date),
-                          debit: money(p.amount),
-                          credit: "—",
-                          balance: "—",
-                        }))
-                      : (history ?? []).map((h) => ({
-                          ref: h.invNo,
-                          details: `Invoice · ${statusLabel(h.status)}`,
-                          date: fmtDate(h.invoiceDate),
-                          debit: money(h.total),
-                          credit: num(h.paidAmount) ? money(h.paidAmount) : "—",
-                          balance: money(num(h.total) - num(h.paidAmount)),
-                        }))) as TableRowData[]
-                }
-              />
-            </div>
+          <div className="p-4 text-sm text-muted-foreground">
+            Select a party from the list to view this section.
           </div>
         )}
       </Panel>
@@ -294,6 +254,8 @@ function PartyProfile({
     .slice(0, 2)
     .map((p) => p[0])
     .join("");
+  const balanceLabel = kind === "buyer" ? "Outstanding" : "Payable";
+  const balanceValue = money(kind === "buyer" ? party.outstanding : party.payable);
   return (
     <div className="bg-workspace/40 p-4 sm:p-5">
       <div className="rounded-lg border bg-card p-5 shadow-card">
@@ -308,6 +270,20 @@ function PartyProfile({
                 <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">
                   {statusLabel(party.status)}
                 </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-destructive/20 bg-destructive-soft px-2.5 py-0.5 text-[11px] font-semibold text-destructive"
+                >
+                  {balanceLabel}: {balanceValue}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-chart-2/25 bg-chart-2/10 px-2.5 py-0.5 text-[11px] font-semibold text-chart-2"
+                >
+                  Credit limit: {money(party.creditLimit)}
+                </Badge>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1.5">
@@ -327,6 +303,10 @@ function PartyProfile({
                   {party.address ?? "—"}
                 </span>
               </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                Payment terms: {party.paymentTerms ?? "—"} · Credit limit:{" "}
+                {money(party.creditLimit)}
+              </div>
             </div>
           </div>
           <Button variant="outline" size="sm" className="rounded-lg" onClick={onEdit}>
@@ -338,8 +318,8 @@ function PartyProfile({
         <MiniStats
           items={[
             {
-              label: kind === "buyer" ? "Outstanding" : "Payable",
-              value: money(kind === "buyer" ? party.outstanding : party.payable),
+              label: balanceLabel,
+              value: balanceValue,
               detail: `${party.openInvoices ?? 0} open invoices`,
               tone: "down",
             },
@@ -356,6 +336,309 @@ function PartyProfile({
             },
           ]}
         />
+      </div>
+    </div>
+  );
+}
+
+function HistoryTable({
+  kind,
+  history,
+}: {
+  kind: "buyer" | "supplier";
+  history: HistoryInvoice[] | undefined;
+}) {
+  const rows: TableRowData[] = (history ?? []).map((h) => ({
+    id: h.id,
+    date: fmtDate(h.invoiceDate),
+    document: h.invNo,
+    status: statusLabel(h.status),
+    amount: money(h.total),
+    paidBalance: `${money(h.paidAmount)} / ${money(num(h.total) - num(h.paidAmount))}`,
+  }));
+  return (
+    <div className="p-4">
+      <DataTable
+        searchable
+        columns={[
+          { key: "date", label: "Date" },
+          { key: "document", label: "Document #" },
+          { key: "status", label: "Status", status: true },
+          { key: "amount", label: "Amount", align: "right" },
+          { key: "paidBalance", label: "Paid / Balance", align: "right" },
+        ]}
+        rows={rows}
+      />
+    </div>
+  );
+}
+
+function LedgerTable({ ledger }: { ledger: LedgerEntry[] | undefined }) {
+  const entries = ledger ?? [];
+  return (
+    <div className="p-4">
+      <div className="overflow-x-auto rounded-lg border bg-card shadow-card">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b bg-table-head text-muted-foreground">
+              <th className="h-9 whitespace-nowrap px-4 text-left text-[11px] font-bold uppercase tracking-[0.08em]">
+                Date
+              </th>
+              <th className="h-9 whitespace-nowrap px-4 text-left text-[11px] font-bold uppercase tracking-[0.08em]">
+                Reference
+              </th>
+              <th className="h-9 whitespace-nowrap px-4 text-left text-[11px] font-bold uppercase tracking-[0.08em]">
+                Description
+              </th>
+              <th className="h-9 whitespace-nowrap px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                Debit
+              </th>
+              <th className="h-9 whitespace-nowrap px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                Credit
+              </th>
+              <th className="h-9 whitespace-nowrap border-l-2 border-primary bg-muted/40 px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                Balance
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e) => (
+              <tr key={e.id} className="border-b last:border-b-0">
+                <td className="h-11 whitespace-nowrap px-4 tabular-nums">{fmtDate(e.date)}</td>
+                <td className="h-11 whitespace-nowrap px-4">{e.refNo ?? e.refType}</td>
+                <td className="h-11 whitespace-nowrap px-4">
+                  {e.description ?? statusLabel(e.refType)}
+                </td>
+                <td className="h-11 whitespace-nowrap px-4 text-right tabular-nums">
+                  {num(e.debit) ? money(e.debit) : "—"}
+                </td>
+                <td className="h-11 whitespace-nowrap px-4 text-right tabular-nums">
+                  {num(e.credit) ? money(e.credit) : "—"}
+                </td>
+                <td className="h-11 whitespace-nowrap border-l-2 border-primary bg-muted/40 px-4 text-right text-base font-bold tabular-nums">
+                  {money(e.balanceAfter)}
+                </td>
+              </tr>
+            ))}
+            {entries.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  No ledger entries found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StatementCard({
+  party,
+  ledger,
+}: {
+  party: Party | undefined;
+  ledger: LedgerEntry[] | undefined;
+}) {
+  // Ledger arrives newest-first; show the statement in chronological order.
+  const chronological = [...(ledger ?? [])].reverse();
+  const rows = chronological.map((e) => ({
+    id: e.id,
+    date: fmtDate(e.date),
+    reference: e.refNo ?? e.refType,
+    debit: num(e.debit) ? money(e.debit) : "—",
+    credit: num(e.credit) ? money(e.credit) : "—",
+    balance: money(e.balanceAfter),
+  }));
+  const first = chronological[0];
+  const opening = first ? num(first.balanceAfter) - num(first.debit) + num(first.credit) : 0;
+  const closing = chronological.length ? num(chronological.at(-1)?.balanceAfter) : opening;
+  return (
+    <div className="p-4">
+      <div className="mx-auto max-w-3xl overflow-hidden rounded-lg border bg-card p-6 shadow-card">
+        <div className="border-b pb-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+            Account statement
+          </div>
+          <div className="mt-1 text-lg font-bold">{party?.name ?? "—"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Period: All transactions · Generated {fmtDate(new Date())}
+          </div>
+        </div>
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Opening balance</span>
+          <span className="font-semibold">{money(opening)}</span>
+        </div>
+        <div className="mt-4 overflow-hidden rounded-lg border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-table-head text-muted-foreground">
+                <th className="h-9 whitespace-nowrap px-4 text-left text-[11px] font-bold uppercase tracking-[0.08em]">
+                  Date
+                </th>
+                <th className="h-9 whitespace-nowrap px-4 text-left text-[11px] font-bold uppercase tracking-[0.08em]">
+                  Reference
+                </th>
+                <th className="h-9 whitespace-nowrap px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                  Debit
+                </th>
+                <th className="h-9 whitespace-nowrap px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                  Credit
+                </th>
+                <th className="h-9 whitespace-nowrap px-4 text-right text-[11px] font-bold uppercase tracking-[0.08em]">
+                  Balance
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b last:border-b-0">
+                  <td className="h-11 whitespace-nowrap px-4 tabular-nums">{r.date}</td>
+                  <td className="h-11 whitespace-nowrap px-4">{r.reference}</td>
+                  <td className="h-11 whitespace-nowrap px-4 text-right tabular-nums">{r.debit}</td>
+                  <td className="h-11 whitespace-nowrap px-4 text-right tabular-nums">
+                    {r.credit}
+                  </td>
+                  <td className="h-11 whitespace-nowrap px-4 text-right font-semibold tabular-nums">
+                    {r.balance}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    No statement rows.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 flex items-center justify-between border-t pt-4">
+          <span className="font-bold">Closing balance</span>
+          <span className="text-lg font-bold text-foreground">{money(closing)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentsCard({
+  party,
+  payments,
+}: {
+  party: Party | undefined;
+  payments: Payment[] | undefined;
+}) {
+  const list = payments ?? [];
+  return (
+    <div className="p-4">
+      {list.length === 0 ? (
+        <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+          No payments recorded for this supplier.
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {list.map((p) => (
+            <div key={p.id} className="overflow-hidden rounded-lg border bg-card p-4 shadow-card">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                  Payment receipt
+                </div>
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-border bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground"
+                >
+                  {p.method ?? "Payment"}
+                </Badge>
+              </div>
+              <div className="mt-2 text-2xl font-bold">{money(p.amount)}</div>
+              <div className="mt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Date</span>
+                  <span className="font-medium">{fmtDate(p.date)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Reference</span>
+                  <span className="font-medium">{p.paymentNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Party</span>
+                  <span className="font-medium">{party?.name ?? "—"}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutstandingCard({
+  kind,
+  party,
+  history,
+}: {
+  kind: "buyer" | "supplier";
+  party: Party | undefined;
+  history: HistoryInvoice[] | undefined;
+}) {
+  const label = kind === "buyer" ? "Outstanding" : "Payable";
+  const total = money(kind === "buyer" ? party?.outstanding : party?.payable);
+  const openStatuses = ["UNPAID", "PARTIAL", "OVERDUE"];
+  const openRows: TableRowData[] = (history ?? [])
+    .filter((h) => openStatuses.includes(h.status.toUpperCase()))
+    .map((h) => ({
+      id: h.id,
+      date: fmtDate(h.invoiceDate),
+      document: h.invNo,
+      status: statusLabel(h.status),
+      balance: money(num(h.total) - num(h.paidAmount)),
+    }));
+
+  return (
+    <div className="p-4">
+      <MiniStats
+        items={[
+          {
+            label,
+            value: total,
+            detail: `${party?.openInvoices ?? 0} open invoices`,
+            tone: "down",
+          },
+          {
+            label: "Open documents",
+            value: String(openRows.length),
+            detail: "Unpaid / partial / overdue",
+          },
+          {
+            label: "Last payment",
+            value: money(party?.lastPayment?.amount),
+            detail: fmtDate(party?.lastPayment?.date),
+            tone: "up",
+          },
+        ]}
+      />
+      <div className="mt-4">
+        <h4 className="mb-2 text-sm font-semibold">Open invoices</h4>
+        {openRows.length > 0 ? (
+          <DataTable
+            searchable={false}
+            columns={[
+              { key: "date", label: "Date" },
+              { key: "document", label: "Document #" },
+              { key: "status", label: "Status", status: true },
+              { key: "balance", label: "Balance", align: "right" },
+            ]}
+            rows={openRows}
+          />
+        ) : (
+          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+            No open invoices match the selected status filter.
+          </div>
+        )}
       </div>
     </div>
   );

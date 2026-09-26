@@ -1,20 +1,12 @@
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { AlertTriangle, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DataTable,
-  Field,
-  MetricStrip,
-  PageHeader,
-  Panel,
-  TabsBar,
-  type TableRowData,
-} from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Field, PageHeader, Panel, TabsBar } from "../ui";
 import { api } from "@/lib/api";
 import {
   EntitySelect,
   fmtDate,
-  money,
   num,
   statusLabel,
   useData,
@@ -63,7 +55,7 @@ interface LowStockProduct {
 }
 
 export function InventoryScreen() {
-  const [tab, setTab] = useState("Stock overview");
+  const [tab, setTab] = useState("Stock levels");
   const [selected, setSelected] = useState<StockRow | null>(null);
   const { data: stock } = useData<StockRow[]>(["stock"], "/inventory/stock");
   const { data: movements } = useData<Movement[]>(["movements"], "/inventory/movements");
@@ -74,35 +66,8 @@ export function InventoryScreen() {
     "/warehouses",
   );
 
-  const stockValue = (stock ?? []).reduce(
-    (s, b) => s + num(b.quantity) * num(b.product.purchasePrice),
-    0,
-  );
-  const today = new Date().toDateString();
-  const todayMoves = (movements ?? []).filter(
-    (m) => new Date(m.createdAt).toDateString() === today,
-  );
-  const whSet = new Set((stock ?? []).map((s) => s.warehouse.id));
-
-  const stockRows = (stock ?? []).map((b) => ({
-    sku: b.product.sku,
-    product: b.product.name,
-    category: b.product.category.name,
-    warehouse: b.warehouse.name,
-    available: `${num(b.quantity).toLocaleString()} ${b.product.unit.code.toLowerCase()}`,
-    reserved: num(b.reserved).toLocaleString(),
-    status: statusLabel(b.status),
-  }));
-
-  const moveRows = (movements ?? []).map((m) => ({
-    date: fmtDate(m.createdAt),
-    product: m.product.name,
-    type: statusLabel(m.type),
-    qty: `${num(m.quantity) > 0 ? "+" : ""}${num(m.quantity).toLocaleString()}`,
-    warehouse: m.warehouse.name,
-    ref: m.refNo ?? m.reason ?? "—",
-    after: m.qtyAfter != null ? num(m.qtyAfter).toLocaleString() : "—",
-  }));
+  const totalSkus = new Set((stock ?? []).map((s) => s.productId)).size;
+  const totalWarehouses = new Set((stock ?? []).map((s) => s.warehouse.id)).size;
 
   const sel = selected ?? (stock ?? [])[0] ?? null;
   const selMoves = (movements ?? []).filter((m) => sel && m.product.sku === sel.product.sku);
@@ -116,40 +81,29 @@ export function InventoryScreen() {
         action="Stock adjustment"
         onAction={() => setTab("Manual adjustment")}
       />
-      <MetricStrip
-        items={[
-          {
-            label: "Stock value",
-            value: money(stockValue),
-            detail: `Across ${whSet.size} warehouses`,
-          },
-          {
-            label: "Available SKUs",
-            value: String(stock?.length ?? 0),
-            detail: "Active stock lines",
-          },
-          {
-            label: "Low stock",
-            value: String(lowStock?.length ?? 0),
-            detail: "Requires action",
-            tone: "down",
-          },
-          {
-            label: "Today's movements",
-            value: String(todayMoves.length),
-            detail: `${todayMoves.filter((m) => num(m.quantity) > 0).length} in · ${todayMoves.filter((m) => num(m.quantity) < 0).length} out`,
-          },
-        ]}
-      />
-      <Panel title="Product stock detail" subtitle="Warehouse and transaction-level visibility">
+      <Panel
+        title="Stock levels"
+        subtitle="Current position, replenishment alerts and movement history"
+        action={
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-lg font-bold tabular-nums">{totalSkus}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                SKUs
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-bold tabular-nums">{totalWarehouses}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Warehouses
+              </div>
+            </div>
+          </div>
+        }
+      >
+        <LowStockWarning lowStock={lowStock ?? []} />
         <TabsBar
-          tabs={[
-            "Stock overview",
-            "Stock in / out",
-            "Manual adjustment",
-            "Low-stock alert",
-            "Movement history",
-          ]}
+          tabs={["Stock levels", "Movement history", "Manual adjustment"]}
           active={tab}
           onChange={setTab}
         />
@@ -159,11 +113,11 @@ export function InventoryScreen() {
             warehouses={warehouses ?? []}
             onDone={() => setTab("Movement history")}
           />
-        ) : tab === "Stock overview" ? (
+        ) : tab === "Stock levels" ? (
           <div className="bg-workspace/40 p-4">
-            <div className="grid gap-4 xl:grid-cols-[310px_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
               <div className="rounded-lg border bg-card shadow-card">
-                <div className="border-b p-4">
+                <div className="border-b p-3">
                   <h3 className="text-[13px] font-semibold">Products</h3>
                   <p className="text-[11px] text-muted-foreground">Choose a SKU to inspect stock</p>
                 </div>
@@ -171,7 +125,7 @@ export function InventoryScreen() {
                   <button
                     key={row.id}
                     onClick={() => setSelected(row)}
-                    className={`block w-full border-b p-3 text-left transition-colors last:border-0 ${
+                    className={`block w-full border-b p-2.5 text-left transition-colors last:border-0 ${
                       sel?.id === row.id
                         ? "border-l-2 border-l-primary bg-accent"
                         : "hover:bg-muted"
@@ -188,79 +142,166 @@ export function InventoryScreen() {
                 ))}
               </div>
               <div>
-                {sel && (
-                  <div className="mb-4 rounded-lg border bg-card p-5 shadow-card">
-                    <div className="flex justify-between">
-                      <div>
-                        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                          {sel.product.sku}
+                {sel ? (
+                  <>
+                    <div className="mb-4 rounded-lg border bg-card p-5 shadow-card">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {sel.product.sku}
+                          </div>
+                          <div className="mt-1 text-lg font-bold">{sel.product.name}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {sel.product.category.name}
+                          </div>
                         </div>
-                        <div className="mt-1 text-lg font-bold">{sel.product.name}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold tabular-nums">
-                          {num(sel.quantity).toLocaleString()}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {sel.product.unit.name} · {sel.warehouse.name}
+                        <div className="text-right">
+                          <div className="text-2xl font-bold tabular-nums">
+                            {num(sel.quantity).toLocaleString()}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {sel.product.unit.name} · {sel.warehouse.name}
+                          </div>
                         </div>
                       </div>
                     </div>
+                    <div className="rounded-lg border bg-card p-5 shadow-card">
+                      <h3 className="mb-4 text-[13px] font-semibold">Movement timeline</h3>
+                      <MovementTimeline movements={selMoves} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground shadow-card">
+                    No stock records available.
                   </div>
                 )}
-                <DataTable
-                  searchable={false}
-                  columns={[
-                    { key: "date", label: "Date" },
-                    { key: "type", label: "Type" },
-                    { key: "qty", label: "Qty", align: "right" },
-                    { key: "ref", label: "Reference" },
-                    { key: "after", label: "After", align: "right" },
-                  ]}
-                  rows={selMoves.map((m) => ({
-                    date: fmtDate(m.createdAt),
-                    type: statusLabel(m.type),
-                    qty: `${num(m.quantity) > 0 ? "+" : ""}${num(m.quantity).toLocaleString()}`,
-                    ref: m.refNo ?? "—",
-                    after: m.qtyAfter != null ? num(m.qtyAfter).toLocaleString() : "—",
-                  }))}
-                />
               </div>
             </div>
           </div>
-        ) : tab === "Low-stock alert" ? (
-          <DataTable
-            columns={[
-              { key: "sku", label: "SKU" },
-              { key: "product", label: "Product" },
-              { key: "stock", label: "Current", align: "right" },
-              { key: "min", label: "Minimum", align: "right" },
-              { key: "gap", label: "Gap", align: "right" },
-            ]}
-            rows={(lowStock ?? []).map((p) => ({
-              sku: p.sku,
-              product: p.name,
-              stock: num(p.totalStock).toLocaleString(),
-              min: num(p.minStock).toLocaleString(),
-              gap: num(p.minStock) - num(p.totalStock),
-            }))}
-          />
         ) : (
-          <DataTable
-            columns={[
-              { key: "date", label: "Date" },
-              { key: "product", label: "Product" },
-              { key: "type", label: "Type" },
-              { key: "qty", label: "Qty", align: "right" },
-              { key: "warehouse", label: "Warehouse" },
-              { key: "ref", label: "Reference" },
-              { key: "after", label: "After", align: "right" },
-            ]}
-            rows={moveRows}
-          />
+          <div className="bg-workspace/40 p-4">
+            <div className="rounded-lg border bg-card p-5 shadow-card">
+              <h3 className="mb-4 text-[13px] font-semibold">All movement history</h3>
+              <MovementTimeline movements={movements ?? []} />
+            </div>
+          </div>
         )}
       </Panel>
     </>
+  );
+}
+
+function LowStockWarning({ lowStock }: { lowStock: LowStockProduct[] }) {
+  return (
+    <div className="m-4 rounded-lg border border-warning/25 bg-warning-soft p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <AlertTriangle className="size-5 text-warning" />
+        <h3 className="text-sm font-bold text-warning">Low-stock warning</h3>
+      </div>
+      {lowStock.length === 0 ? (
+        <p className="text-sm text-muted-foreground">All stock levels healthy</p>
+      ) : (
+        <div className="divide-y">
+          {lowStock.map((p) => {
+            const current = num(p.totalStock);
+            const min = num(p.minStock);
+            const gap = min - current;
+            const critical = current === 0;
+            return (
+              <div key={p.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="font-semibold">{p.sku}</div>
+                  <div className="truncate text-xs text-muted-foreground">{p.name}</div>
+                </div>
+                <div className="flex items-center gap-3 text-xs tabular-nums">
+                  <span>
+                    {current.toLocaleString()}{" "}
+                    <span className="text-muted-foreground">{p.unit.code}</span>
+                  </span>
+                  <span className="text-muted-foreground">min {min.toLocaleString()}</span>
+                  <span className="font-semibold text-destructive">−{gap.toLocaleString()}</span>
+                  <Badge
+                    variant="outline"
+                    className={
+                      critical
+                        ? "rounded-full px-2 py-0 text-[11px] font-semibold bg-destructive-soft text-destructive border-destructive/20"
+                        : "rounded-full px-2 py-0 text-[11px] font-semibold bg-warning-soft text-warning border-warning/25"
+                    }
+                  >
+                    {critical ? statusLabel("out of stock") : statusLabel("low stock")}
+                  </Badge>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MovementTimeline({ movements }: { movements: Movement[] }) {
+  if (movements.length === 0) {
+    return <p className="text-sm text-muted-foreground">No movements recorded.</p>;
+  }
+
+  return (
+    <div>
+      {movements.map((m, i) => {
+        const incoming = num(m.quantity) > 0;
+        const sign = incoming ? "+" : "−";
+        const qty = Math.abs(num(m.quantity));
+        const label = statusLabel(m.type) || (incoming ? "Incoming" : "Outgoing");
+        return (
+          <div key={m.id} className="flex gap-4 pb-6 last:pb-0">
+            <div className="relative flex w-3 flex-col items-center">
+              <div
+                className={
+                  incoming
+                    ? "z-10 h-3 w-3 rounded-full border-2 border-background bg-success"
+                    : "z-10 h-3 w-3 rounded-full border-2 border-background bg-destructive"
+                }
+              />
+              {i !== movements.length - 1 && <div className="mt-1 h-full w-px bg-border" />}
+            </div>
+            <div className="-mt-0.5 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {fmtDate(m.createdAt)}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={
+                    incoming
+                      ? "rounded-full px-2 py-0 text-[11px] font-semibold bg-success-soft text-success border-success/25"
+                      : "rounded-full px-2 py-0 text-[11px] font-semibold bg-destructive-soft text-destructive border-destructive/20"
+                  }
+                >
+                  {label}
+                </Badge>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-base font-bold tabular-nums">
+                  {sign}
+                  {qty.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {m.product.name} · {m.warehouse.name}
+                </span>
+              </div>
+              <div className="mt-1 flex justify-between gap-2 text-xs">
+                <span className="truncate text-muted-foreground">
+                  Ref: {m.refNo ?? m.reason ?? "—"}
+                </span>
+                <span className="shrink-0 font-semibold tabular-nums">
+                  Balance: {m.qtyAfter != null ? num(m.qtyAfter).toLocaleString() : "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

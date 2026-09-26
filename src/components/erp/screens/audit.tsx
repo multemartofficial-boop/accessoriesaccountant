@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Activity, Clock3 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Field, PageHeader, Panel } from "../ui";
 import { fmtDate, statusLabel, useData } from "./shared";
 
@@ -49,7 +48,29 @@ export function AuditScreen() {
         title="Audit log"
         description="Chronological record of user activity and changes across every module."
         action="Export log"
-        onAction={() => toast.success("Audit log export prepared")}
+        onAction={() => {
+          const rows = events ?? [];
+          const csv = [
+            ["Time", "User", "Action", "Module", "Record", "IP"],
+            ...rows.map((e) => [
+              new Date(e.createdAt).toISOString(),
+              e.user?.name ?? "System",
+              e.action,
+              e.module,
+              e.recordId ?? "",
+              e.ipAddress ?? "",
+            ]),
+          ]
+            .map((line) => line.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(","))
+            .join("\n");
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+          toast.success(`Exported ${rows.length} audit entries`);
+        }}
       />
       <div className="grid gap-5 xl:grid-cols-[250px_1fr]">
         <Panel title="Activity filters">
@@ -67,7 +88,9 @@ export function AuditScreen() {
               </select>
             </label>
             <Field label="Date" type="date" value={date} onChange={setDate} />
-            <Button onClick={() => toast.success("Activity filters applied")}>Apply filters</Button>
+            <p className="text-[11px] text-muted-foreground">
+              Filters apply automatically as you change them.
+            </p>
           </div>
         </Panel>
         <Panel

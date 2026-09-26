@@ -72,12 +72,13 @@ export function CashBankScreen() {
             details: t.particulars ?? statusLabel(t.type),
             account: t.account.name,
             receipt:
-              t.type === "RECEIPT" || (t.type === "TRANSFER" && t.txnNo.endsWith("-IN"))
+              t.type === "RECEIPT" ||
+              ((t.type === "TRANSFER" || t.type === "ADJUSTMENT") && t.txnNo.endsWith("-IN"))
                 ? money(t.amount)
                 : "—",
             payment:
-              ["PAYMENT", "ADJUSTMENT"].includes(t.type) ||
-              (t.type === "TRANSFER" && !t.txnNo.endsWith("-IN"))
+              ["PAYMENT", "ADJUSTMENT", "TRANSFER"].includes(t.type) &&
+              !t.txnNo.endsWith("-IN")
                 ? money(t.amount)
                 : "—",
             balance: money(t.balanceAfter),
@@ -94,7 +95,13 @@ export function CashBankScreen() {
           {
             label: "Transaction type",
             name: "type",
-            options: ["Receipt", "Payment", "Bank transfer", "Adjustment"],
+            options: [
+              "Receipt",
+              "Payment",
+              "Bank transfer",
+              "Adjustment (increase)",
+              "Adjustment (decrease)",
+            ],
             required: true,
           },
           {
@@ -116,7 +123,13 @@ export function CashBankScreen() {
         onSubmit={(values) =>
           save(
             api.post("/cash-bank/transactions", {
-              type: values["type"] === "Bank transfer" ? "TRANSFER" : values["type"]?.toUpperCase(),
+              type:
+                values["type"] === "Bank transfer"
+                  ? "TRANSFER"
+                  : values["type"]?.startsWith("Adjustment")
+                    ? "ADJUSTMENT"
+                    : values["type"]?.toUpperCase(),
+              direction: values["type"] === "Adjustment (increase)" ? "IN" : "OUT",
               accountId: accounts?.find((a) => a.name === values["account"])?.id,
               toAccountId: accounts?.find((a) => a.name === values["toAccount"])?.id,
               amount: num(values["amount"]),

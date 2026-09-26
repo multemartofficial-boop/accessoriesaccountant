@@ -9,9 +9,13 @@ const D0 = () => new Prisma.Decimal(0);
 
 function range(req: { query: Record<string, unknown> }) {
   const now = new Date();
+  // A bare "YYYY-MM-DD" parses to midnight — extend to end of day so entries
+  // posted on the `to` date are included.
+  const to = req.query.to ? new Date(String(req.query.to)) : now;
+  if (req.query.to && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to))) to.setUTCHours(23, 59, 59, 999);
   return {
     from: req.query.from ? new Date(String(req.query.from)) : new Date(now.getFullYear(), now.getMonth(), 1),
-    to: req.query.to ? new Date(String(req.query.to)) : now,
+    to,
   };
 }
 
@@ -117,11 +121,17 @@ reportsRouter.get(
     }));
     const sum = (cat: string) => rows.filter((r) => r.category === cat).reduce((s, r) => s.plus(r.balance), D0());
     const netProfit = sum("INCOME").minus(sum("EXPENSE"));
+    // Income/expense accounts are not closed to retained earnings, so the
+    // period result must appear on the equity side or the sheet can't balance.
+    const equity = [
+      ...rows.filter((r) => r.category === "EQUITY"),
+      { code: "3900", account: "Current period earnings", category: "EQUITY", balance: netProfit },
+    ];
     res.json({
       to,
       assets: rows.filter((r) => r.category === "ASSET"),
       liabilities: rows.filter((r) => r.category === "LIABILITY"),
-      equity: rows.filter((r) => r.category === "EQUITY"),
+      equity,
       netProfit,
       totalAssets: sum("ASSET"),
       totalLiabilitiesEquity: sum("LIABILITY").plus(sum("EQUITY")).plus(netProfit),

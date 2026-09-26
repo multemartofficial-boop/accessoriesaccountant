@@ -6,7 +6,10 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export const money = (n: number | string | null | undefined) =>
-  `৳${Number(n ?? 0).toLocaleString("en-US")}`;
+  `৳${Number(n ?? 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 export const fmtDate = (d?: string | Date | null) =>
   d

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Save } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DataTable, Field, MetricStrip, PageHeader, Panel, SelectField, TabsBar } from "../ui";
+import { Badge } from "@/components/ui/badge";
+import { Field, MetricStrip, PageHeader, Panel, SelectField, TabsBar } from "../ui";
 import { api } from "@/lib/api";
 import {
   EntitySelect,
@@ -51,7 +52,14 @@ export function SalesScreen() {
   const { data: orders } = useData<SalesOrder[]>(["sales-orders"], "/sales/orders");
   const { data: invoices } = useData<SalesInvoice[]>(["sales-invoices"], "/sales/invoices");
   const { data: returns_ } = useData<
-    { id: number; returnNo: string; date: string; total: string; buyer: { name: string } }[]
+    {
+      id: number;
+      returnNo: string;
+      date: string;
+      total: string;
+      reason?: string;
+      buyer: { name: string };
+    }[]
   >(["sales-returns"], "/sales/returns");
   const { data: collections } = useData<
     {
@@ -59,11 +67,11 @@ export function SalesScreen() {
       collectionNo: string;
       date: string;
       amount: string;
+      method?: string;
       buyer: { name: string };
       account: { name: string };
     }[]
   >(["collections"], "/sales/collections");
-  void collections;
   const { data: buyers } = useData<Named[]>(["buyers"], "/buyers");
   const { data: products } = useData<ProductLite[]>(["products"], "/products");
   const { data: warehouses } = useData<Named[]>(["warehouses"], "/warehouses");
@@ -77,13 +85,18 @@ export function SalesScreen() {
   const receivable = (buyers ?? []).reduce((s, b) => s + num(b.outstanding), 0);
   const returnsTotal = (returns_ ?? []).reduce((s, r) => s + num(r.total), 0);
 
-  const toRow = (o: SalesOrder) => ({
-    ref: o.soNo,
-    party: o.buyer.name,
-    date: fmtDate(o.orderDate),
-    status: o.approvalStatus === "AWAITING_APPROVAL" ? "Awaiting approval" : statusLabel(o.status),
-    amount: money(o.total),
-  });
+  function statusClass(value: string) {
+    const v = value.toLowerCase();
+    if (
+      ["paid", "approved", "active", "received", "completed", "in stock"].some((s) => v.includes(s))
+    )
+      return "border-success/25 bg-success-soft text-success";
+    if (["pending", "partial", "low", "review", "awaiting"].some((s) => v.includes(s)))
+      return "border-warning/25 bg-warning-soft text-warning";
+    if (["overdue", "declined", "cancelled", "out of stock"].some((s) => v.includes(s)))
+      return "border-destructive/20 bg-destructive-soft text-destructive";
+    return "border-border bg-muted text-muted-foreground";
+  }
 
   return (
     <>
@@ -165,40 +178,196 @@ export function SalesScreen() {
             onDone={() => setTab("Sales history")}
           />
         ) : tab === "Sales history" ? (
-          <DataTable
-            columns={[
-              { key: "ref", label: "Reference" },
-              { key: "party", label: "Party" },
-              { key: "date", label: "Date" },
-              { key: "status", label: "Status", status: true },
-              { key: "amount", label: "Amount", align: "right" },
-            ]}
-            rows={(invoices ?? []).map((i) => ({
-              ref: i.invNo,
-              party: i.buyer.name,
-              date: fmtDate(i.invoiceDate),
-              status: statusLabel(i.status),
-              amount: money(i.total),
-            }))}
-          />
+          <div className="bg-workspace/40 p-4">
+            <div className="space-y-3">
+              {(invoices ?? []).map((i) => (
+                <div key={i.id} className="rounded-lg border bg-card p-4 shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold">{i.invNo}</div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {i.buyer.name} · {fmtDate(i.invoiceDate)}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold shadow-none ${statusClass(i.status)}`}
+                    >
+                      {statusLabel(i.status)}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg border bg-surface-subtle p-3 text-sm">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                        Total
+                      </div>
+                      <div className="font-semibold tabular-nums">{money(i.total)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                        Paid
+                      </div>
+                      <div className="font-semibold tabular-nums">{money(i.paidAmount)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                        Balance
+                      </div>
+                      <div className="font-semibold tabular-nums">
+                        {money(num(i.total) - num(i.paidAmount))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-right text-[13px] font-semibold tabular-nums">
+                    Net total: {money(i.total)}
+                  </div>
+                </div>
+              ))}
+              {(invoices ?? []).length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No records match your search.
+                </div>
+              )}
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="overflow-hidden rounded-lg border bg-card shadow-card">
+                <div className="border-b px-4 py-2.5 text-[13px] font-semibold">
+                  Collections <span className="text-muted-foreground">({(collections ?? []).length})</span>
+                </div>
+                <div className="divide-y">
+                  {(collections ?? []).map((c) => (
+                    <div key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-semibold">{c.collectionNo}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {c.buyer?.name ?? ""} · {fmtDate(c.date)}
+                          {c.method ? ` · ${c.method}` : ""}
+                        </div>
+                      </div>
+                      <div className="font-semibold tabular-nums text-success">{money(c.amount)}</div>
+                    </div>
+                  ))}
+                  {(collections ?? []).length === 0 && (
+                    <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                      No collections recorded.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-lg border bg-card shadow-card">
+                <div className="border-b px-4 py-2.5 text-[13px] font-semibold">
+                  Sales returns <span className="text-muted-foreground">({(returns_ ?? []).length})</span>
+                </div>
+                <div className="divide-y">
+                  {(returns_ ?? []).map((r) => (
+                    <div key={r.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-semibold">{r.returnNo}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {r.buyer?.name ?? ""} · {fmtDate(r.date)}
+                          {r.reason ? ` · ${r.reason}` : ""}
+                        </div>
+                      </div>
+                      <div className="font-semibold tabular-nums text-destructive">
+                        {money(r.total)}
+                      </div>
+                    </div>
+                  ))}
+                  {(returns_ ?? []).length === 0 && (
+                    <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                      No sales returns.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
-          <DataTable
-            columns={[
-              { key: "ref", label: "Reference" },
-              { key: "party", label: "Party" },
-              { key: "date", label: "Date" },
-              { key: "status", label: "Status", status: true },
-              { key: "amount", label: "Amount", align: "right" },
-            ]}
-            rows={(orders ?? []).map(toRow)}
-            onRowClick={() => setTab("Order form")}
-            onDelete={(row) =>
-              save(
-                api.del(`/sales/orders/${(orders ?? []).find((o) => o.soNo === row["ref"])?.id}`),
-                "Sales order cancelled",
-              )
-            }
-          />
+          <div className="bg-workspace/40 p-4">
+            <div className="space-y-3">
+              {(orders ?? []).map((o) => (
+                <div
+                  key={o.id}
+                  className="rounded-lg border bg-card p-4 shadow-card"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold">{o.soNo}</div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {o.buyer.name} · {fmtDate(o.orderDate)}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-1.5">
+                      <Badge
+                        variant="outline"
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold shadow-none ${statusClass(o.approvalStatus === "AWAITING_APPROVAL" ? "awaiting" : o.status)}`}
+                      >
+                        {o.approvalStatus === "AWAITING_APPROVAL"
+                          ? "Awaiting approval"
+                          : statusLabel(o.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="mt-3 overflow-hidden rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-table-head text-left text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                          <th className="px-3 py-2">Item</th>
+                          <th className="w-24 px-3 py-2 text-right">Qty</th>
+                          <th className="w-24 px-3 py-2 text-right">Rate</th>
+                          <th className="w-28 px-3 py-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {o.items.map((item, idx) => {
+                          const p = products?.find((x) => x.id === item.productId);
+                          return (
+                            <tr key={idx} className="border-b last:border-0">
+                              <td className="px-3 py-1.5">
+                                {p?.name ?? `Product #${item.productId}`}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {item.quantity}
+                              </td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">
+                                {money(item.rate)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+                                {money(num(item.quantity) * num(item.rate))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Cancel order"
+                      className="h-7 w-7 text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        save(api.del(`/sales/orders/${o.id}`), "Sales order cancelled");
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                    <div className="text-[13px] font-semibold tabular-nums">
+                      Total: {money(o.total)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(orders ?? []).length === 0 && (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No records match your search.
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </Panel>
     </>

@@ -35,7 +35,9 @@ export async function runIntegrityChecks(db: PrismaClient): Promise<{ ok: boolea
   const accounts = await db.cashAccount.findMany({ include: { transactions: true } });
   for (const a of accounts) {
     const sum = a.transactions.reduce((s, t) => {
-      const inbound = t.type === "RECEIPT" || (t.type === "TRANSFER" && t.txnNo.endsWith("-IN"));
+      const inbound =
+        t.type === "RECEIPT" ||
+        ((t.type === "TRANSFER" || t.type === "ADJUSTMENT") && t.txnNo.endsWith("-IN"));
       return s + (inbound ? dec(t.amount) : -dec(t.amount));
     }, 0);
     push("cash_balance", `${a.name} (id ${a.id})`, dec(a.openingBalance) + sum, dec(a.balance));

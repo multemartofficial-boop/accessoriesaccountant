@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   BarChart3,
@@ -25,7 +26,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getSessionUser, logout } from "@/lib/api";
+import { api, getSessionUser, logout } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import {
   Drawer,
@@ -64,8 +65,8 @@ const groups: {
       { label: "Buyers", to: "/buyers", icon: Users },
       { label: "Suppliers", to: "/suppliers", icon: Truck },
       { label: "Products", to: "/products", icon: PackageSearch },
-      { label: "Purchase", to: "/purchase", icon: ShoppingCart, badge: "7" },
-      { label: "Inventory", to: "/inventory", icon: Boxes, badge: "5" },
+      { label: "Purchase", to: "/purchase", icon: ShoppingCart },
+      { label: "Inventory", to: "/inventory", icon: Boxes },
       { label: "Sales", to: "/sales", icon: Store },
       { label: "Documents", to: "/documents", icon: FileOutput },
       { label: "Warehouses", to: "/warehouses", icon: Warehouse },
@@ -75,7 +76,7 @@ const groups: {
     label: "Accounting & reports",
     items: [
       { label: "Cash & Bank", to: "/cash-bank", icon: CircleDollarSign },
-      { label: "Approvals", to: "/approvals", icon: ClipboardCheck, badge: "12" },
+      { label: "Approvals", to: "/approvals", icon: ClipboardCheck, badge: "pending" },
       { label: "Audit Log", to: "/audit-log", icon: Activity },
       { label: "VAT & Tax", to: "/vat-tax", icon: ReceiptText },
       { label: "Financial Reports", to: "/financial-reports", icon: BookOpenText },
@@ -120,6 +121,18 @@ function Brand() {
 
 function AppSidebar() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Live pending-approval count for the Approvals badge.
+  const { data: pendingApprovals } = useQuery({
+    queryKey: ["pending-approvals-badge"],
+    queryFn: () => api.get<{ id: number }[]>("/approvals?status=AWAITING_APPROVAL"),
+  });
+  const badgeFor = (badge: string | undefined) => {
+    if (badge === "pending") {
+      const n = pendingApprovals?.length ?? 0;
+      return n > 0 ? String(n) : undefined;
+    }
+    return badge;
+  };
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="p-0">
@@ -146,9 +159,9 @@ function AppSidebar() {
                         <Link to={item.to}>
                           <item.icon />
                           <span>{item.label}</span>
-                          {item.badge && (
+                          {badgeFor(item.badge) && (
                             <span className="ml-auto text-[10px] tabular-nums opacity-70">
-                              {item.badge}
+                              {badgeFor(item.badge)}
                             </span>
                           )}
                         </Link>
@@ -199,7 +212,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [search, setSearch] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { data: pendingApprovals } = useQuery({
+    queryKey: ["pending-approvals-badge"],
+    queryFn: () => api.get<{ id: number }[]>("/approvals?status=AWAITING_APPROVAL"),
+  });
+  const pendingCount = pendingApprovals?.length ?? 0;
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
   const moreActive = moreMobileItems.some((item) => isActive(item.to));
   const runSearch = (event: FormEvent) => {
@@ -244,7 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </form>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-[11px] text-muted-foreground lg:block">
-              FY 2026 · Dhaka Office
+              FY {new Date().getFullYear()}
             </span>
             <Button
               variant="ghost"
@@ -258,11 +277,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Button
               variant="outline"
               size="icon"
-              aria-label="Notifications"
+              aria-label="Pending approvals"
+              title={
+                pendingCount > 0
+                  ? `${pendingCount} approval${pendingCount === 1 ? "" : "s"} pending`
+                  : "No pending approvals"
+              }
               className="relative size-11 rounded-lg bg-card shadow-sm md:size-9"
+              onClick={() => navigate({ to: "/approvals" })}
             >
               <Bell className="size-4 md:size-3.5" />
-              <span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-destructive md:right-1.5 md:top-1.5" />
+              {pendingCount > 0 && (
+                <span className="absolute right-2.5 top-2.5 size-1.5 rounded-full bg-destructive md:right-1.5 md:top-1.5" />
+              )}
             </Button>
           </div>
           {mobileSearchOpen && (
