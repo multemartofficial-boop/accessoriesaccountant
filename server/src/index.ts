@@ -3,8 +3,22 @@ import { prisma } from "./db";
 import { createApp } from "./app";
 
 async function main() {
-  // Verify connectivity before accepting traffic.
-  await prisma.$queryRaw`SELECT 1`;
+  // Verify connectivity before accepting traffic. The remote DB can briefly
+  // refuse connections (transient drops / hourly-cap window), so retry a few
+  // times instead of dying on the first failure.
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      lastError = undefined;
+      break;
+    } catch (err) {
+      lastError = err;
+      console.log(`DB connect attempt ${attempt}/5 failed — retrying in 5s`);
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+  }
+  if (lastError) throw lastError;
   console.log("Database connected");
 
   const app = createApp();

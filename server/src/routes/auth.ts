@@ -19,9 +19,12 @@ authRouter.post(
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
 
-    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     const authUser = { id: user.id, name: user.name, email: user.email, role: user.role };
-    await logAudit({ action: "LOGIN", module: "Auth", recordId: user.email, req });
+    // Two independent writes — parallel saves a remote-DB roundtrip on login.
+    await Promise.all([
+      prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }),
+      logAudit({ action: "LOGIN", module: "Auth", recordId: user.email, req }),
+    ]);
 
     res.json({ token: signToken(authUser), user: authUser });
   }),
