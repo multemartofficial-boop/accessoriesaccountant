@@ -98,6 +98,7 @@ salesRouter.post(
           total,
           notes,
           createdById: req.user?.id,
+          items: { create: lineData },
         },
       });
 
@@ -192,7 +193,18 @@ salesRouter.post(
   "/chalans",
   requireRole("ADMIN", "MANAGER"),
   asyncHandler(async (req, res) => {
-    const { salesOrderId, buyerId, warehouseId, date, driverName, vehicleNo, notes, items } = req.body ?? {};
+    const {
+      salesOrderId,
+      buyerId,
+      warehouseId,
+      date,
+      driverName,
+      vehicleNo,
+      styleNo,
+      erpNo,
+      notes,
+      items,
+    } = req.body ?? {};
     if (!buyerId || !warehouseId || !Array.isArray(items) || items.length === 0) {
       badRequest("buyerId, warehouseId and items[] are required");
     }
@@ -212,6 +224,8 @@ salesRouter.post(
           date: date ? new Date(date) : new Date(),
           driverName,
           vehicleNo,
+          styleNo,
+          erpNo,
           notes,
           createdById: req.user?.id,
           items: {
@@ -257,8 +271,19 @@ salesRouter.post(
   "/invoices",
   requireRole("ADMIN", "MANAGER"),
   asyncHandler(async (req, res) => {
-    const { salesOrderId, chalanId, buyerId, invoiceDate, dueDate, vatMode, discount, notes, items } =
-      req.body ?? {};
+    const {
+      salesOrderId,
+      chalanId,
+      buyerId,
+      invoiceDate,
+      dueDate,
+      vatMode,
+      discount,
+      brand,
+      grossWeight,
+      notes,
+      items,
+    } = req.body ?? {};
     if (!buyerId || !Array.isArray(items) || items.length === 0) {
       badRequest("buyerId and items[] are required");
     }
@@ -312,8 +337,11 @@ salesRouter.post(
           subtotal,
           taxTotal,
           total,
+          brand,
+          grossWeight,
           notes,
           createdById: req.user?.id,
+          items: { create: lineData },
         },
       });
       await postSalesInvoice(tx, created.id);

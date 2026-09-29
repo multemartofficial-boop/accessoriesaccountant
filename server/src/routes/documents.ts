@@ -16,7 +16,10 @@ documentsRouter.get(
         buyer: true,
         salesOrder: true,
         chalan: true,
-        items: { include: { product: { include: { unit: true } } } },
+        items: {
+          orderBy: { id: "asc" },
+          include: { product: { include: { unit: true } } },
+        },
       },
     });
     if (!invoice) throw new ApiError(404, "Invoice not found");
@@ -34,7 +37,10 @@ documentsRouter.get(
         buyer: true,
         warehouse: true,
         salesOrder: true,
-        items: { include: { product: { include: { unit: true } } } },
+        items: {
+          orderBy: { id: "asc" },
+          include: { product: { include: { unit: true } } },
+        },
       },
     });
     if (!chalan) throw new ApiError(404, "Chalan not found");

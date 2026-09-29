@@ -232,7 +232,8 @@ export function SalesScreen() {
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="overflow-hidden rounded-lg border bg-card shadow-card">
                 <div className="border-b px-4 py-2.5 text-[13px] font-semibold">
-                  Collections <span className="text-muted-foreground">({(collections ?? []).length})</span>
+                  Collections{" "}
+                  <span className="text-muted-foreground">({(collections ?? []).length})</span>
                 </div>
                 <div className="divide-y">
                   {(collections ?? []).map((c) => (
@@ -244,7 +245,9 @@ export function SalesScreen() {
                           {c.method ? ` · ${c.method}` : ""}
                         </div>
                       </div>
-                      <div className="font-semibold tabular-nums text-success">{money(c.amount)}</div>
+                      <div className="font-semibold tabular-nums text-success">
+                        {money(c.amount)}
+                      </div>
                     </div>
                   ))}
                   {(collections ?? []).length === 0 && (
@@ -256,7 +259,8 @@ export function SalesScreen() {
               </div>
               <div className="overflow-hidden rounded-lg border bg-card shadow-card">
                 <div className="border-b px-4 py-2.5 text-[13px] font-semibold">
-                  Sales returns <span className="text-muted-foreground">({(returns_ ?? []).length})</span>
+                  Sales returns{" "}
+                  <span className="text-muted-foreground">({(returns_ ?? []).length})</span>
                 </div>
                 <div className="divide-y">
                   {(returns_ ?? []).map((r) => (
@@ -286,10 +290,7 @@ export function SalesScreen() {
           <div className="bg-workspace/40 p-4">
             <div className="space-y-3">
               {(orders ?? []).map((o) => (
-                <div
-                  key={o.id}
-                  className="rounded-lg border bg-card p-4 shadow-card"
-                >
+                <div key={o.id} className="rounded-lg border bg-card p-4 shadow-card">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-sm font-bold">{o.soNo}</div>
@@ -521,6 +522,8 @@ function ChalanForm({
             date: v["Transaction date"],
             driverName: v["Driver name"],
             vehicleNo: v["Vehicle no."],
+            styleNo: v["Style ref"] || null,
+            erpNo: v["ERP no."] || null,
             notes: v["Reference"],
             items: items
               .filter((i) => i.productId)
@@ -564,6 +567,8 @@ function ChalanForm({
           />
           <Field label="Driver name" name="Driver name" />
           <Field label="Vehicle no." name="Vehicle no." />
+          <Field label="Style ref" name="Style ref" />
+          <Field label="ERP no." name="ERP no." />
           <Field label="Reference" name="Reference" />
         </div>
         <div className="mt-5">
@@ -630,6 +635,8 @@ function SalesInvoiceForm({
             dueDate: v["Due date"],
             vatMode: v["VAT mode"],
             discount: num(discount),
+            brand: v["Buyer brand"] || null,
+            grossWeight: v["Gross weight"] || null,
             notes: v["Reference"],
             items: items
               .filter((i) => i.productId)
@@ -684,6 +691,8 @@ function SalesInvoiceForm({
             value={discount}
             onChange={setDiscount}
           />
+          <Field label="Buyer brand" name="Buyer brand" />
+          <Field label="Gross weight" name="Gross weight" />
           <Field label="Reference" name="Reference" />
         </div>
         <div className="mt-5">

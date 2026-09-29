@@ -199,20 +199,46 @@
   [role="dialog"] { max-width: calc(100vw - 1.5rem); }
 }
 
-@media print {
-  [data-sidebar="sidebar"], header, nav, button { display: none !important; }
-  main { padding: 0 !important; }
+@page {
+  size: A4 portrait;
+  margin: 9mm 8mm;
+}
 
-  /* Print only the document preview, not the composer/app chrome. */
-  body * { visibility: hidden; }
-  #print-document, #print-document * { visibility: visible; }
-  #print-document {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    max-width: none;
-    box-shadow: none;
-    margin: 0;
+@media print {
+  /* Print only the document preview, not the composer/app chrome.
+     Elements that neither are nor contain #print-document are removed from
+     layout entirely (not just hidden) so a tall document paginates instead
+     of being clipped to a single page. */
+  body *:not(#print-document):not(#print-document *):not(:has(#print-document)) {
+    display: none !important;
   }
+
+  /* Neutralise the screen layout on the ancestors of the document so the
+     preview column's grid/flex padding doesn't squeeze or offset it. */
+  *:has(#print-document) {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  #print-document {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
+  /* Repeat table headers on every page and keep each row on one page. */
+  #print-document thead { display: table-header-group; }
+  #print-document tfoot { display: table-footer-group; }
+  #print-document tr { break-inside: avoid; page-break-inside: avoid; }
+  #print-document table { page-break-inside: auto; }
 }

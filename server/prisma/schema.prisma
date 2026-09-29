@@ -600,6 +600,8 @@ model DeliveryChalan {
   date        DateTime
   driverName  String?
   vehicleNo   String?
+  styleNo     String? // customer style ref printed on the challan ("Style :")
+  erpNo       String? // customer ERP/order ref printed on the challan ("ERP NO:")
   notes       String?
   createdById Int?
   createdAt   DateTime @default(now())
@@ -642,6 +644,8 @@ model SalesInvoice {
   paidAmount     Decimal        @default(0) @db.Decimal(15, 2)
   status         InvoiceStatus  @default(UNPAID)
   approvalStatus ApprovalStatus @default(NONE)
+  brand          String? // end-buyer/brand printed on proforma ("Buyer. :")
+  grossWeight    String? // printed "GROSS WEIGHT" e.g. "14 KG"
   notes          String?
   createdById    Int?
   createdAt      DateTime       @default(now())

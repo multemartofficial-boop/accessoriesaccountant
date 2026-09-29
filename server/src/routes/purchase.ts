@@ -101,6 +101,7 @@ purchaseRouter.post(
           taxTotal,
           total: subtotal.plus(taxTotal),
           createdById: req.user?.id,
+          items: { create: lineData },
         },
         include: { items: true },
       });
@@ -227,6 +228,7 @@ purchaseRouter.post(
           taxTotal,
           total: subtotal.plus(taxTotal),
           createdById: req.user?.id,
+          items: { create: lineData },
         },
       });
       await postPurchaseInvoice(tx, created.id);

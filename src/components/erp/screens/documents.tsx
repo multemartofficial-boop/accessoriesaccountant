@@ -40,6 +40,8 @@ interface DocInvoice {
     taxTotal: string;
     total: string;
     vatMode?: string;
+    brand?: string | null;
+    grossWeight?: string | null;
     buyer: { name: string; code?: string; address?: string; phone?: string };
     salesOrder?: { soNo: string } | null;
     items: {
@@ -60,6 +62,8 @@ interface DocChalan {
     date: string;
     driverName?: string;
     vehicleNo?: string;
+    styleNo?: string | null;
+    erpNo?: string | null;
     notes?: string;
     buyer: { name: string; code?: string; address?: string; phone?: string };
     warehouse?: { name: string };
@@ -325,11 +329,7 @@ export function DocumentsScreen() {
               />
             )
           ) : doc && isChalan && "chalan" in doc ? (
-            <ChalanTemplate
-              doc={doc}
-              notes={notes || doc.chalan.notes || settings?.["doc_chalan_notes"]}
-              chalanType={settings?.["doc_chalan_type"] ?? "Delivery"}
-            />
+            <ChalanTemplate doc={doc} />
           ) : (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
               Select a document to preview.
@@ -532,8 +532,8 @@ function InvoiceTemplate({
 /* ------------------- Proforma invoice (bordered trade template) ------------------- */
 
 const CURRENCY_SYMBOL: Record<string, string> = { BDT: "৳", USD: "$", EUR: "€" };
-const CURRENCY_MAJOR: Record<string, string> = { BDT: "TAKA", USD: "DOLLARS", EUR: "EUROS" };
-const CURRENCY_MINOR: Record<string, string> = { BDT: "PAISA", USD: "CENTS", EUR: "CENTS" };
+
+const CURRENCY_MINOR: Record<string, string> = { BDT: "PAISA", USD: "CENT", EUR: "CENT" };
 
 const ONES = [
   "",
@@ -591,11 +591,10 @@ function amountInWords(amount: number, currency: string): string {
     }
   }
   if (rest) parts.push(wordsBelow1000(rest));
-  const major = CURRENCY_MAJOR[currency] ?? "";
-  const minor = CURRENCY_MINOR[currency] ?? "CENTS";
+  const minor = CURRENCY_MINOR[currency] ?? "CENT";
   const main = parts.length ? parts.join(" ") : "ZERO";
-  const centsPart = cents ? ` AND ${wordsBelow1000(cents)} ${minor}` : "";
-  return `${currency} ${main}${major ? ` ${major}` : ""}${centsPart} ONLY`;
+  const centsPart = cents ? ` AND ${minor} ${wordsBelow1000(cents)}` : "";
+  return `${currency} ${main}${centsPart} ONLY`;
 }
 
 const ddmmyy = (d?: string | Date | null) => {
@@ -635,6 +634,9 @@ function ProformaTemplate({
   const tax = num(inv.taxTotal);
   const less = num(inv.discount);
   const grand = num(inv.total);
+  // Composer fields override; otherwise print the values saved on the invoice.
+  const brandText = brand || inv.brand || "";
+  const weightText = grossWeight || inv.grossWeight || "";
   // Items are priced per piece in the ERP but quoted per dozen on trade
   // documents — rate per dz = unit rate x 12 (PCS units only).
   const ratePerDz = (item: DocInvoice["invoice"]["items"][number]) =>
@@ -659,9 +661,10 @@ function ProformaTemplate({
   const noteLines = parsedNotes.length
     ? parsedNotes
     : [
-        "Complain should be brought to our notice in writing/mail within 7 days of delivery of the goods.",
-        "Supplied trims fall under garment accessories by HSN CODE 6217.10.00.",
-        "Payment should be made only by RTGS / bank transfer.",
+        "Complain should be brought to our notice in writing / mail within 7 days of delivery of the goods to you.",
+        "Supplied all trims by us has come under garment accessories by HS CODE 6217.10.00.",
+        "Payment should be made only by RTGS.",
+        "If invoice amount less than $1500 - must be paid by the RTGS or FDD only.",
       ];
   const filler = Math.max(0, 12 - inv.items.length);
 
@@ -669,7 +672,7 @@ function ProformaTemplate({
     <div
       id="print-document"
       className="mx-auto max-w-[210mm] bg-white p-4 text-black shadow-print"
-      style={{ fontFamily: "Arial, sans-serif" }}
+      style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
       <table className={`w-full border-collapse border-2 ${B} text-[11px]`}>
         <thead>
@@ -689,10 +692,7 @@ function ProformaTemplate({
                   )}
                 </div>
                 <div className="flex-1 px-2 py-2 text-center">
-                  <div
-                    className="text-[26px] font-bold uppercase leading-8 tracking-wide"
-                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-                  >
+                  <div className="text-[26px] font-bold uppercase leading-8 tracking-wide">
                     {c?.name ?? "Company Name"}
                   </div>
                   <div className="mt-0.5 whitespace-pre-line text-[10px] leading-4">
@@ -732,7 +732,7 @@ function ProformaTemplate({
                 {inv.buyer.address}
               </div>
               <div className="mt-3 text-[12px] font-semibold">
-                Buyer. :{(brand ?? "").toUpperCase()}
+                Buyer. :{brandText.toUpperCase()}
               </div>
             </td>
             <td colSpan={2} className={`border-b-2 border-l-2 ${B} p-2 align-top`}>
@@ -768,7 +768,7 @@ function ProformaTemplate({
               <td className={`border-r ${B} px-2 py-1`}>{item.product.sku || item.product.name}</td>
               <td className={`border-r ${B} px-2 py-1 font-semibold`}>{item.product.name}</td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
-                {num(item.quantity).toLocaleString()}
+                {num(item.quantity)}
               </td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
                 {sym} {ratePerDz(item).toFixed(2)}
@@ -792,7 +792,7 @@ function ProformaTemplate({
               Total Items {"—".repeat(5) + ">"}
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold tabular-nums`}>
-              {totalQty.toLocaleString()}
+              {totalQty}
             </td>
             <td className={`border-r ${B}`} />
             <td />
@@ -802,7 +802,7 @@ function ProformaTemplate({
               GROSS WEIGHT {"—".repeat(5) + ">"}
             </td>
             <td colSpan={3} className="px-2 py-1.5 font-semibold">
-              {grossWeight}
+              {weightText}
             </td>
           </tr>
           {/* Bottom: amount-in-words / bank / notes | totals */}
@@ -893,137 +893,140 @@ function ProformaTemplate({
   );
 }
 
-function ChalanTemplate({
-  doc,
-  notes,
-  chalanType,
-}: {
-  doc: DocChalan;
-  notes?: string | undefined;
-  chalanType: string;
-}) {
+function ChalanTemplate({ doc }: { doc: DocChalan }) {
   const c = doc.company;
   const ch = doc.chalan;
   const total = ch.items.reduce((s, i) => s + num(i.quantity), 0);
+  // Printed forms keep a fixed block of ruled rows so the sheet still looks
+  // complete when few items ship; longer lists simply overflow to page 2+.
+  const filler = Math.max(0, 22 - ch.items.length);
+  const qtyCell = "border border-black px-1 py-[3px] text-center align-middle";
 
   return (
     <div
       id="print-document"
-      className="mx-auto max-w-[210mm] bg-white p-8 text-black shadow-print"
-      style={{ fontFamily: "Arial, sans-serif" }}
+      className="mx-auto max-w-[210mm] bg-white p-4 text-black shadow-print"
+      style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      {/* Top bar */}
-      <div className="mb-4 flex items-end justify-between border-b-4 border-black pb-2 text-[11px]">
-        <div>Date: {fmtDate(ch.date)}</div>
-        <div className="text-sm font-bold uppercase">DELIVERY CHALLAN</div>
-        <div className="text-right">Challan No: {ch.dcNo}</div>
+      {/* Top bar — outside the bordered form */}
+      <div className="mb-1 flex items-baseline justify-between text-[13px]">
+        <div className="w-1/3">Date : {ddmmyy(ch.date)}</div>
+        <div className="w-1/3 text-center text-[16px] font-bold tracking-[0.18em]">
+          DELIVERY CHALLAN
+        </div>
+        <div className="w-1/3 text-right">Challan No : {ch.dcNo}</div>
       </div>
 
-      {/* To / From boxes */}
       <table className="w-full border-collapse border border-black text-[11px]">
-        <tbody>
+        <thead>
+          {/* To / supplier block */}
           <tr>
-            <td className="w-1/2 align-top p-3">
-              <div className="font-semibold">To:</div>
-              <div className="font-bold uppercase">{ch.buyer.name}</div>
-              <div className="mt-1 whitespace-pre-line leading-4">{ch.buyer.address ?? ""}</div>
-              <div className="mt-1">Cell: {ch.buyer.phone ?? ""}</div>
-              <div>ERP NO: {ch.salesOrder?.soNo ?? ""}</div>
-              <div>Style: {ch.buyer.code ?? ""}</div>
+            <td colSpan={3} className="border border-black p-2 align-top">
+              <div>To :</div>
+              <div className="mt-0.5 text-[15px] font-bold uppercase">{ch.buyer.name}</div>
+              <div className="whitespace-pre-line uppercase leading-[1.35]">
+                {ch.buyer.address ?? ""}
+              </div>
+              <div className="mt-2 text-[10px]">
+                <div>Cell : {ch.buyer.phone ?? ""}</div>
+                <div>Style : {ch.styleNo ?? ""}</div>
+                <div>ERP NO: {ch.erpNo ?? ch.salesOrder?.soNo ?? ""}</div>
+              </div>
             </td>
-            <td className="w-1/2 align-top border-l border-black p-3">
-              <div className="font-semibold">From:</div>
-              <div className="font-bold uppercase">{c?.name ?? "Company Name"}</div>
-              <div className="mt-1 whitespace-pre-line leading-4">{c?.address ?? ""}</div>
-              <div className="mt-1">Cell: {c?.phone ?? ""}</div>
-              <div>TIN NO: {c?.tradeLicenseNo ?? ""}</div>
-              <div>BIN: {c?.vatRegNo ?? ""}</div>
+            <td colSpan={4} className="border border-black p-2 align-top">
+              <div className="text-[15px] font-bold uppercase">{c?.name ?? "Company Name"}</div>
+              <div className="whitespace-pre-line leading-[1.35]">{c?.address ?? ""}</div>
+              <div className="mt-2 text-[10px]">
+                <div>Cell : {c?.phone ?? ""}</div>
+                <div>TIN NO : {c?.tradeLicenseNo ?? ""}</div>
+                <div>BIN : {c?.vatRegNo ?? ""}</div>
+              </div>
             </td>
           </tr>
-        </tbody>
-      </table>
-
-      {/* Meta line */}
-      <div className="mt-2 flex justify-between text-[10px]">
-        <div>Challan Type: {chalanType}</div>
-        <div>
-          Vehicle/Driver: {ch.vehicleNo ?? ""}
-          {ch.vehicleNo && ch.driverName ? " / " : ""}
-          {ch.driverName ?? ""}
-        </div>
-        <div>Warehouse: {ch.warehouse?.name ?? ""}</div>
-      </div>
-
-      {/* Items */}
-      <table className="mt-4 w-full border-collapse border border-black text-[10px]">
-        <thead>
+          {/* Column headers: "Item No" groups the five quantity columns */}
           <tr>
-            <th rowSpan={2} className="border border-black px-1 py-1">
+            <th rowSpan={2} className={`${qtyCell} w-9 font-bold`}>
               S.No.
             </th>
-            <th rowSpan={2} className="border border-black px-1 py-1 text-left">
+            <th rowSpan={2} className="border border-black px-2 py-[3px] text-left font-bold">
               Order No.
             </th>
-            <th className="border border-black px-1 py-1">STICKER</th>
-            <th className="border border-black px-1 py-1">Item No</th>
-            <th className="border border-black px-1 py-1" />
-            <th className="border border-black px-1 py-1" />
-            <th className="border border-black px-1 py-1" />
+            <th colSpan={5} className="border border-black px-1 py-[2px] text-center font-bold">
+              Item No
+            </th>
           </tr>
           <tr>
-            <th className="border border-black px-1 py-1">Qty. (Pcs.)</th>
-            <th className="border border-black px-1 py-1">Qty. (Pcs.)</th>
-            <th className="border border-black px-1 py-1">Qty. (Pcs.)</th>
-            <th className="border border-black px-1 py-1">Qty. (Pcs.)</th>
-            <th className="border border-black px-1 py-1">Qty. (Pcs.)</th>
+            <th className={`${qtyCell} w-[12.5%] font-bold leading-tight`}>
+              STICKER
+              <br />
+              Qty. (Pcs.)
+            </th>
+            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
+            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
+            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
+            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
           </tr>
         </thead>
         <tbody>
           {ch.items.map((item, i) => (
             <tr key={i}>
-              <td className="border border-black px-1 py-1 text-center">{i + 1}</td>
-              <td className="border border-black px-1 py-1">{item.product.name}</td>
-              <td className="border border-black px-1 py-1 text-center">
-                {num(item.quantity).toLocaleString()}
-              </td>
-              <td className="border border-black px-1 py-1 text-center" />
-              <td className="border border-black px-1 py-1 text-center" />
-              <td className="border border-black px-1 py-1 text-center" />
-              <td className="border border-black px-1 py-1 text-center" />
+              <td className={qtyCell}>{i + 1}</td>
+              <td className="border border-black px-2 py-[3px] uppercase">{item.product.name}</td>
+              <td className={qtyCell}>{num(item.quantity)}</td>
+              <td className={qtyCell} />
+              <td className={qtyCell} />
+              <td className={qtyCell} />
+              <td className={qtyCell} />
             </tr>
           ))}
+          {Array.from({ length: filler }).map((_, i) => (
+            <tr key={`f-${i}`}>
+              <td className={qtyCell}>&nbsp;</td>
+              <td className="border border-black px-2 py-[3px]" />
+              <td className={qtyCell} />
+              <td className={qtyCell} />
+              <td className={qtyCell} />
+              <td className={qtyCell} />
+            </tr>
+          ))}
+          {/* Totals */}
           <tr>
-            <td colSpan={2} className="border border-black px-1 py-1 font-bold">
+            <td colSpan={2} className="border border-black px-2 py-[4px] font-bold">
               Total Qty (Pcs.)= {total.toLocaleString()} pcs
             </td>
-            <td className="border border-black px-1 py-1 text-center font-bold">
-              {total.toLocaleString()} PCS
+            <td className={`${qtyCell} font-bold`}>{total} PCS</td>
+            <td className={`${qtyCell} font-bold`}>00 PCS</td>
+            <td className={`${qtyCell} font-bold`}>00 PCS</td>
+            <td className={`${qtyCell} font-bold`}>00 PCS</td>
+            <td className={`${qtyCell} font-bold`}>00 PCS</td>
+          </tr>
+          {/* Bottom band */}
+          <tr>
+            <td colSpan={2} className="border border-black p-2 align-top">
+              <div className="text-[10px] font-semibold">RECEIVER SIGN :</div>
+              <div className="mt-10 text-[10px]">Name:</div>
             </td>
-            <td className="border border-black px-1 py-1 text-center font-bold">00 PCS</td>
-            <td className="border border-black px-1 py-1 text-center font-bold">00 PCS</td>
-            <td className="border border-black px-1 py-1 text-center font-bold">00 PCS</td>
-            <td className="border border-black px-1 py-1 text-center font-bold">00 PCS</td>
+            <td colSpan={2} className="border border-black p-2 align-top">
+              <div className="text-[9.5px] italic leading-[1.45]">
+                Note for any shortage kindly
+                <br />
+                intimate us within three days.
+                <br />
+                <br />
+                After receiving goods. After that
+                <br />
+                it is not considerable.
+              </div>
+            </td>
+            <td colSpan={3} className="border border-black p-2 align-bottom">
+              <div className="pb-1 text-center">
+                <div className="text-[11px] font-semibold italic">{c?.name ?? "Company"}</div>
+                <div className="text-[10px] italic">Authorized Signatory</div>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
-
-      {/* Bottom section */}
-      <div className="mt-6 flex justify-between text-[10px]">
-        <div className="w-1/2 pr-4">
-          <div className="mb-8 font-bold">RECEIVER SIGN :</div>
-          <div className="mb-6 border-b border-black pb-1" />
-          <div className="mb-6 border-b border-black pb-1" />
-          <div className="font-bold">Name:</div>
-          <div className="mt-3 text-[9px] leading-4">
-            Note for any shortage kindly intimate us within three days. After receiving goods, After
-            that it is not considerable.
-          </div>
-        </div>
-        <div className="w-1/2 flex flex-col items-center justify-end">
-          <div className="mb-2 h-32 w-32 border-2 border-dashed border-black" />
-          <div className="font-bold">Authorised Signatory</div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1093,6 +1096,8 @@ function InvoiceCreateForm({
               dueDate: v["Due date"],
               vatMode,
               discount: num(discount),
+              brand: v["Buyer brand"] || null,
+              grossWeight: v["Gross weight"] || null,
               items: items
                 .filter((i) => i.productId)
                 .map((i) => ({
@@ -1151,6 +1156,8 @@ function InvoiceCreateForm({
           value={discount}
           onChange={setDiscount}
         />
+        <Field label="Buyer brand" name="Buyer brand" placeholder="e.g. LAHALLE" />
+        <Field label="Gross weight" name="Gross weight" placeholder="e.g. 14 KG" />
       </div>
       <ItemsEditor products={products} items={items} onChange={setItems} priceField="salesPrice" />
       <div className="rounded-lg border bg-surface-subtle px-4 py-3 text-[12px]">
@@ -1228,6 +1235,8 @@ function ChalanCreateForm({
               date: v["Delivery date"],
               driverName: v["Driver name"],
               vehicleNo: v["Vehicle no."],
+              styleNo: v["Style ref"] || null,
+              erpNo: v["ERP no."] || null,
               notes: v["Notes"],
               items: items
                 .filter((i) => i.productId)
@@ -1271,6 +1280,8 @@ function ChalanCreateForm({
         />
         <Field label="Driver name" name="Driver name" />
         <Field label="Vehicle no." name="Vehicle no." />
+        <Field label="Style ref" name="Style ref" placeholder="e.g. LH4 PRUNE V2 LKLH26-63 D1" />
+        <Field label="ERP no." name="ERP no." placeholder="e.g. LKL-TB-26-22056" />
         <Field label="Notes" name="Notes" />
       </div>
       <ItemsEditor products={products} items={items} onChange={setItems} priceField="salesPrice" />
