@@ -29,9 +29,24 @@ async function handleApiRequest(request: Request): Promise<Response> {
   try {
     const base = await getApiBase();
     const url = new URL(request.url);
+    // undici rejects `expect`, and hop-by-hop headers must not be forwarded.
+    const headers = new Headers(request.headers);
+    for (const h of [
+      "expect",
+      "connection",
+      "keep-alive",
+      "transfer-encoding",
+      "te",
+      "trailer",
+      "upgrade",
+      "host",
+      "content-length",
+    ]) {
+      headers.delete(h);
+    }
     const init: RequestInit = {
       method: request.method,
-      headers: request.headers,
+      headers,
       redirect: "manual",
     };
     if (request.method !== "GET" && request.method !== "HEAD") {
