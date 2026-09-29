@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Plus, Printer, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,7 +80,6 @@ interface Sources {
   chalans: { id: number; dcNo: string }[];
 }
 
-const INVOICE_ACCENT = "#2f4f8f";
 const CHALAN_ACCENT = "#e8912d";
 
 interface Named {
@@ -267,7 +266,7 @@ export function DocumentsScreen() {
                   </div>
                 </div>
               )}
-              {isProforma && (
+              {!isChalan && (
                 <div className="mt-4 grid gap-3">
                   <Field
                     label="Buyer (brand) — printed as “Buyer. :”"
@@ -311,23 +310,21 @@ export function DocumentsScreen() {
               Fill the form on the left â€” the new document will appear here.
             </div>
           ) : doc && !isChalan && "invoice" in doc ? (
-            isProforma ? (
-              <ProformaTemplate
-                doc={doc}
-                notes={notes || settings?.["doc_proforma_notes"]}
-                brand={brand}
-                grossWeight={grossWeight}
-                currency={settings?.["currency"] ?? "USD"}
-                bank={bankAccount}
-                settings={settings}
-              />
-            ) : (
-              <InvoiceTemplate
-                doc={doc}
-                notes={notes || settings?.["doc_invoice_terms"]}
-                footer={settings?.["doc_invoice_footer"]}
-              />
-            )
+            <TradeInvoiceTemplate
+              title={isProforma ? "PROFORMA INVOICE" : "INVOICE"}
+              doc={doc}
+              notes={
+                notes ||
+                (isProforma
+                  ? settings?.["doc_proforma_notes"]
+                  : settings?.["doc_invoice_terms"])
+              }
+              brand={brand}
+              grossWeight={grossWeight}
+              currency={settings?.["currency"] ?? "USD"}
+              bank={bankAccount}
+              settings={settings}
+            />
           ) : doc && isChalan && "chalan" in doc ? (
             <ChalanTemplate doc={doc} />
           ) : (
@@ -341,195 +338,9 @@ export function DocumentsScreen() {
   );
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tax invoice (blue template) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ---------------------------- Sales invoice / proforma (bordered trade template) ---------------------------- */
 
-function InvoiceTemplate({
-  doc,
-  notes,
-  footer,
-}: {
-  doc: DocInvoice;
-  notes?: string | undefined;
-  footer?: string | undefined;
-}) {
-  const c = doc.company;
-  const inv = doc.invoice;
-  const taxable = num(inv.subtotal) - num(inv.discount);
 
-  return (
-    <div
-      id="print-document"
-      className="mx-auto max-w-xl bg-white p-8 text-black shadow-print"
-      style={{ fontFamily: "Arial, sans-serif" }}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          {c?.logoUrl && <img src={c.logoUrl} alt="logo" className="mb-2 h-10 object-contain" />}
-          <div className="text-2xl font-bold" style={{ color: INVOICE_ACCENT }}>
-            {c?.name ?? "Company Name"}
-          </div>
-          <div className="mt-2 text-[10px] leading-4 text-gray-600">
-            {c?.address?.split("\n").map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
-            {c?.phone && <div>Phone: {c.phone}</div>}
-            {c?.email && <div>{c.email}</div>}
-            {c?.website && <div>Website: {c.website}</div>}
-            {c?.vatRegNo && <div>BIN: {c.vatRegNo}</div>}
-            {c?.tradeLicenseNo && <div>Trade License: {c.tradeLicenseNo}</div>}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-3xl font-bold" style={{ color: INVOICE_ACCENT }}>
-            INVOICE
-          </div>
-          <table className="ml-auto mt-3 border-collapse text-[10px]">
-            <tbody>
-              {[
-                ["DATE", fmtDate(inv.invoiceDate)],
-                ["INVOICE #", inv.invNo],
-                ["CUSTOMER ID", inv.buyer.code ?? "â€”"],
-                ["DUE DATE", inv.dueDate ? fmtDate(inv.dueDate) : "â€”"],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td
-                    className="border border-gray-300 px-2 py-1 text-left font-semibold"
-                    style={{ color: INVOICE_ACCENT }}
-                  >
-                    {k}
-                  </td>
-                  <td className="border border-gray-300 px-2 py-1 text-right">{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Bill to */}
-      <div className="mt-6">
-        <div
-          className="px-2 py-1 text-[10px] font-bold text-white"
-          style={{ background: INVOICE_ACCENT }}
-        >
-          BILL TO
-        </div>
-        <div className="mt-1 text-[11px] leading-5">
-          <div className="font-semibold">{inv.buyer.name}</div>
-          <div>{inv.buyer.address ?? ""}</div>
-          <div>{inv.buyer.phone ?? ""}</div>
-        </div>
-      </div>
-
-      {/* Items */}
-      <table className="mt-5 w-full border-collapse text-[10px]">
-        <thead>
-          <tr style={{ background: INVOICE_ACCENT }}>
-            <th className="px-2 py-1.5 text-left font-bold text-white">DESCRIPTION</th>
-            <th className="w-14 px-2 py-1.5 text-center font-bold text-white">QTY</th>
-            <th className="w-20 px-2 py-1.5 text-right font-bold text-white">RATE</th>
-            <th className="w-14 px-2 py-1.5 text-center font-bold text-white">TAXED</th>
-            <th className="w-24 px-2 py-1.5 text-right font-bold text-white">AMOUNT</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.items.map((item, i) => (
-            <tr key={i} style={{ background: i % 2 ? "#f3f5f9" : "#fff" }}>
-              <td className="px-2 py-1.5">
-                {item.product.name}
-                {item.product.sku && <span className="text-gray-500"> Â· {item.product.sku}</span>}
-              </td>
-              <td className="px-2 py-1.5 text-center">{num(item.quantity).toLocaleString()}</td>
-              <td className="px-2 py-1.5 text-right">{money(item.rate)}</td>
-              <td className="px-2 py-1.5 text-center">{num(item.taxAmount) > 0 ? "X" : ""}</td>
-              <td className="px-2 py-1.5 text-right">{money(item.total)}</td>
-            </tr>
-          ))}
-          {Array.from({ length: Math.max(0, 6 - inv.items.length) }).map((_, i) => (
-            <tr
-              key={`empty-${i}`}
-              style={{ background: (inv.items.length + i) % 2 ? "#f3f5f9" : "#fff" }}
-            >
-              <td className="px-2 py-1.5">&nbsp;</td>
-              <td />
-              <td />
-              <td />
-              <td />
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Comments + totals */}
-      <div className="mt-4 flex gap-4">
-        <div className="flex-1">
-          <div
-            className="px-2 py-1 text-[10px] font-bold text-white"
-            style={{ background: INVOICE_ACCENT }}
-          >
-            OTHER COMMENTS
-          </div>
-          <div className="mt-1 whitespace-pre-line text-[10px] leading-4 text-gray-700">
-            {notes || "1. Payment due within the agreed terms."}
-          </div>
-        </div>
-        <table className="w-56 border-collapse text-[10px]">
-          <tbody>
-            <tr>
-              <td className="px-2 py-1 text-right font-semibold">Subtotal</td>
-              <td className="border border-gray-300 px-2 py-1 text-right">{money(inv.subtotal)}</td>
-            </tr>
-            {num(inv.discount) > 0 && (
-              <tr>
-                <td className="px-2 py-1 text-right font-semibold">Discount</td>
-                <td className="border border-gray-300 px-2 py-1 text-right">
-                  -{money(inv.discount)}
-                </td>
-              </tr>
-            )}
-            <tr>
-              <td className="px-2 py-1 text-right font-semibold">Taxable</td>
-              <td className="border border-gray-300 px-2 py-1 text-right">{money(taxable)}</td>
-            </tr>
-            <tr>
-              <td className="px-2 py-1 text-right font-semibold">VAT</td>
-              <td className="border border-gray-300 px-2 py-1 text-right">{money(inv.taxTotal)}</td>
-            </tr>
-            <tr>
-              <td
-                className="px-2 py-1.5 text-right font-bold text-white"
-                style={{ background: INVOICE_ACCENT }}
-              >
-                TOTAL
-              </td>
-              <td className="border border-gray-300 px-2 py-1.5 text-right font-bold">
-                {money(inv.total)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-6 text-[10px]">
-        Make all cheques payable to <strong>{c?.legalName ?? c?.name ?? "Company Name"}</strong>
-      </div>
-      <div className="mt-8 text-center text-[10px] italic">
-        {footer ?? "Thank you for your business!"}
-      </div>
-      {c?.phone && (
-        <div className="mt-1 text-center text-[9px] text-gray-500">
-          If you have any questions about this invoice, please contact {c.phone}
-          {c.email ? `, ${c.email}` : ""}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Delivery chalan (amber template) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-
-/* ------------------- Proforma invoice (bordered trade template) ------------------- */
 
 const CURRENCY_SYMBOL: Record<string, string> = { BDT: "৳", USD: "$", EUR: "€" };
 
@@ -605,7 +416,8 @@ const ddmmyy = (d?: string | Date | null) => {
 
 const B = "border-black";
 
-function ProformaTemplate({
+function TradeInvoiceTemplate({
+  title,
   doc,
   notes,
   brand,
@@ -614,6 +426,7 @@ function ProformaTemplate({
   bank,
   settings,
 }: {
+  title: string;
   doc: DocInvoice;
   notes?: string | undefined;
   brand?: string | undefined;
@@ -714,7 +527,7 @@ function ProformaTemplate({
               colSpan={4}
               className={`border-b-2 ${B} px-2 py-1.5 text-[15px] font-bold tracking-wide`}
             >
-              PROFORMA INVOICE
+              {title}
             </td>
             <td
               colSpan={2}
