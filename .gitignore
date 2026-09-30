@@ -38,3 +38,5 @@ server/src/generated/
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
