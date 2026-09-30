@@ -25,7 +25,7 @@ settingsRouter.put(
     const before = await prisma.companyProfile.findUnique({ where: { id: 1 } });
     const profile = await prisma.companyProfile.upsert({
       where: { id: 1 },
-      create: { id: 1, name: name ?? "GarmentTrade" },
+      create: { id: 1, name: name ?? "RAHMAN'S LABEL" },
       update: { name, legalName, logoUrl, address, phone, email, website, vatRegNo, tradeLicenseNo },
     });
     await logAudit({ action: "UPDATE", module: MODULE, recordId: "company", before, after: profile, req });

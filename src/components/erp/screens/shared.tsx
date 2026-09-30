@@ -64,11 +64,13 @@ export function ItemsEditor({
   items,
   onChange,
   priceField,
+  showRate = true,
 }: {
   products: ProductLite[];
   items: LineItem[];
   onChange: (items: LineItem[]) => void;
   priceField: "purchasePrice" | "salesPrice";
+  showRate?: boolean;
 }) {
   const update = (index: number, patch: Partial<LineItem>) => {
     onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -85,8 +87,8 @@ export function ItemsEditor({
           <tr className="border-b bg-table-head text-left text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
             <th className="px-3 py-2">Item</th>
             <th className="w-24 px-3 py-2 text-right">Quantity</th>
-            <th className="w-24 px-3 py-2 text-right">Rate</th>
-            <th className="w-28 px-3 py-2 text-right">Total</th>
+            {showRate && <th className="w-24 px-3 py-2 text-right">Rate</th>}
+            {showRate && <th className="w-28 px-3 py-2 text-right">Total</th>}
             <th className="w-10" />
           </tr>
         </thead>
@@ -121,20 +123,24 @@ export function ItemsEditor({
                   onChange={(e) => update(index, { quantity: e.target.value })}
                 />
               </td>
-              <td className="px-3 py-1.5">
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  required
-                  className="h-9 w-full rounded-md border border-input bg-card px-2 text-right text-xs"
-                  value={item.rate}
-                  onChange={(e) => update(index, { rate: e.target.value })}
-                />
-              </td>
-              <td className="px-3 py-1.5 text-right text-xs font-semibold tabular-nums">
-                {money(num(item.quantity) * num(item.rate))}
-              </td>
+              {showRate && (
+                <td className="px-3 py-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    className="h-9 w-full rounded-md border border-input bg-card px-2 text-right text-xs"
+                    value={item.rate}
+                    onChange={(e) => update(index, { rate: e.target.value })}
+                  />
+                </td>
+              )}
+              {showRate && (
+                <td className="px-3 py-1.5 text-right text-xs font-semibold tabular-nums">
+                  {money(num(item.quantity) * num(item.rate))}
+                </td>
+              )}
               <td className="px-2 py-1.5">
                 <Button
                   type="button"

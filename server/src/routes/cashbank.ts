@@ -12,7 +12,64 @@ const MODULE = "Cash & Bank";
 cashBankRouter.get(
   "/accounts",
   asyncHandler(async (_req, res) => {
-    res.json(await prisma.cashAccount.findMany({ orderBy: { id: "asc" } }));
+    res.json(
+      await prisma.cashAccount.findMany({ where: { status: "ACTIVE" }, orderBy: { id: "asc" } }),
+    );
+  }),
+);
+
+cashBankRouter.put(
+  "/accounts/:id",
+  requireRole("ADMIN", "MANAGER"),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const before = await prisma.cashAccount.findUnique({ where: { id } });
+    if (!before) throw new ApiError(404, "Account not found");
+    const { name, type, bankName, accountNo } = req.body ?? {};
+    if (type && type !== "CASH" && type !== "BANK") badRequest("type must be CASH or BANK");
+    const account = await prisma.cashAccount.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(type && { type }),
+        ...(bankName !== undefined && { bankName: bankName || null }),
+        ...(accountNo !== undefined && { accountNo: accountNo || null }),
+      },
+    });
+    await logAudit({
+      action: "UPDATE",
+      module: MODULE,
+      recordId: before.name,
+      before,
+      after: account,
+      req,
+    });
+    res.json(account);
+  }),
+);
+
+// Accounts with history are deactivated (kept for ledgers); unused ones are removed.
+cashBankRouter.delete(
+  "/accounts/:id",
+  requireRole("ADMIN", "MANAGER"),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const before = await prisma.cashAccount.findUnique({ where: { id } });
+    if (!before) throw new ApiError(404, "Account not found");
+    const [txns, transfersIn, payments, collections] = await Promise.all([
+      prisma.cashTransaction.count({ where: { accountId: id } }),
+      prisma.cashTransaction.count({ where: { toAccountId: id } }),
+      prisma.supplierPayment.count({ where: { accountId: id } }),
+      prisma.paymentCollection.count({ where: { accountId: id } }),
+    ]);
+    const inUse = txns + transfersIn + payments + collections > 0;
+    if (inUse) {
+      await prisma.cashAccount.update({ where: { id }, data: { status: "INACTIVE" } });
+    } else {
+      await prisma.cashAccount.delete({ where: { id } });
+    }
+    await logAudit({ action: "DELETE", module: MODULE, recordId: before.name, before, req });
+    res.json({ deleted: !inUse, deactivated: inUse });
   }),
 );
 
@@ -125,7 +182,10 @@ cashBankRouter.post(
       }
       // ADJUSTMENT posts no journal — used for opening corrections.
 
-      await logAudit({ action: "CREATE", module: MODULE, recordId: created.txnNo, after: created, req }, tx);
+      await logAudit(
+        { action: "CREATE", module: MODULE, recordId: created.txnNo, after: created, req },
+        tx,
+      );
       return created;
     });
     res.status(201).json(txn);

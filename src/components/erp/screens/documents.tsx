@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { Plus, Printer, Save } from "lucide-react";
+import { Pencil, Plus, Printer, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, PageHeader, SelectField } from "../ui";
+import { Field, PageHeader } from "../ui";
 import { api } from "@/lib/api";
 import {
   EntitySelect,
   fmtDate,
   ItemsEditor,
-  money,
   num,
   useData,
   useSave,
@@ -32,9 +31,10 @@ interface DocInvoice {
   type: string;
   company?: Company | null;
   invoice: {
+    id: number;
     invNo: string;
     invoiceDate: string;
-    dueDate?: string;
+    dueDate?: string | null;
     subtotal: string;
     discount: string;
     taxTotal: string;
@@ -42,9 +42,12 @@ interface DocInvoice {
     vatMode?: string;
     brand?: string | null;
     grossWeight?: string | null;
+    notes?: string | null;
+    buyerId: number;
     buyer: { name: string; code?: string; address?: string; phone?: string };
     salesOrder?: { soNo: string } | null;
     items: {
+      productId: number;
       quantity: string;
       rate: string;
       taxAmount: string;
@@ -58,29 +61,41 @@ interface DocChalan {
   type: string;
   company?: Company | null;
   chalan: {
+    id: number;
     dcNo: string;
     date: string;
-    driverName?: string;
-    vehicleNo?: string;
+    driverName?: string | null;
+    vehicleNo?: string | null;
     styleNo?: string | null;
     erpNo?: string | null;
-    notes?: string;
+    notes?: string | null;
+    buyerId: number;
     buyer: { name: string; code?: string; address?: string; phone?: string };
     warehouse?: { name: string };
     salesOrder?: { soNo: string } | null;
     items: {
+      productId: number;
       quantity: string;
       product: { name: string; sku?: string; unit?: { name: string; code: string } };
     }[];
   };
 }
 
+// Printed verbatim on every proforma invoice unless the composer overrides them.
+const PROFORMA_NOTES = [
+  "Complain Should be Brought to our Notice in writing / mail within 7 Days of Delivery of the Goods to You.",
+  "Supplied all trims by us has comes under garment accessories by HSN CODE 6217.10.00.",
+  "Payment should be made only by RTGS.",
+  "If invoice amount less than $1500-must be Paid by the RTGS or FDD only.",
+];
+
+const usd = (n: number | string) =>
+  `$ ${num(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 interface Sources {
   invoices: { id: number; invNo: string }[];
   chalans: { id: number; dcNo: string }[];
 }
-
-const CHALAN_ACCENT = "#e8912d";
 
 interface Named {
   id: number;
@@ -108,16 +123,16 @@ interface TaxRateLite {
 }
 
 export function DocumentsScreen() {
-  const [kind, setKind] = useState("Invoice");
+  const [kind, setKind] = useState("Proforma");
   const [docId, setDocId] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [brand, setBrand] = useState("");
   const [grossWeight, setGrossWeight] = useState("");
-  const [mode, setMode] = useState<"browse" | "create">("browse");
+  const [bankId, setBankId] = useState<number | "">("");
+  const [mode, setMode] = useState<"browse" | "create" | "edit">("browse");
   const { data: sources } = useData<Sources>(["doc-sources"], "/documents/sources");
   const { data: settings } = useData<Record<string, string>>(["settings"], "/settings");
   const { data: buyers } = useData<Named[]>(["buyers"], "/buyers");
-  const { data: warehouses } = useData<Named[]>(["warehouses"], "/warehouses");
   const { data: products } = useData<ProductLite[]>(["products"], "/products");
   const { data: orders } = useData<SalesOrderLite[]>(["sales-orders"], "/sales/orders");
   const { data: taxRates } = useData<TaxRateLite[]>(["tax-rates"], "/vat/rates");
@@ -127,27 +142,29 @@ export function DocumentsScreen() {
   );
 
   const isChalan = kind === "Chalan";
-  const isProforma = kind === "Proforma";
   const list = isChalan ? (sources?.chalans ?? []) : (sources?.invoices ?? []);
   const selectedId = docId ?? list[0]?.id;
-  const bankAccount = (cashAccounts ?? []).find((a) => a.type === "BANK");
+  const bankOptions = (cashAccounts ?? []).filter((a) => a.type === "BANK");
+  const bankAccount = bankOptions.find((a) => a.id === bankId) ?? bankOptions[0];
 
   const { data: doc } = useData<DocInvoice | DocChalan>(
     ["document", kind, selectedId],
     isChalan ? `/documents/chalan/${selectedId}` : `/documents/invoice/${selectedId}`,
-    Boolean(selectedId) && mode === "browse",
+    Boolean(selectedId),
   );
 
-  const onCreated = (id: number) => {
+  const onSaved = (id: number) => {
     setDocId(id);
     setMode("browse");
   };
+  const invoiceDoc = doc && !isChalan && "invoice" in doc ? doc : undefined;
+  const chalanDoc = doc && isChalan && "chalan" in doc ? doc : undefined;
 
   return (
     <>
       <PageHeader
         eyebrow="Documents"
-        title="Invoice & chalan generator"
+        title="Proforma invoice & chalan generator"
         description="Compose commercial documents and verify the exact print layout before issue."
         action="Print"
         onAction={() => window.print()}
@@ -156,7 +173,7 @@ export function DocumentsScreen() {
         <div className="border-r">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex rounded-lg border bg-surface-subtle p-1">
-              {["Invoice", "Proforma", "Chalan"].map((k) => (
+              {["Proforma", "Chalan"].map((k) => (
                 <Button
                   type="button"
                   variant={kind === k ? "default" : "ghost"}
@@ -165,6 +182,7 @@ export function DocumentsScreen() {
                   onClick={() => {
                     setKind(k);
                     setDocId(null);
+                    setMode("browse");
                   }}
                 >
                   {k}
@@ -172,40 +190,48 @@ export function DocumentsScreen() {
               ))}
             </div>
             <div className="flex gap-2">
+              {mode === "browse" && doc && (
+                <Button variant="outline" size="sm" onClick={() => setMode("edit")}>
+                  <Pencil className="size-4" /> Edit
+                </Button>
+              )}
               <Button
-                variant={mode === "create" ? "secondary" : "outline"}
+                variant={mode !== "browse" ? "secondary" : "outline"}
                 size="sm"
-                onClick={() => setMode(mode === "create" ? "browse" : "create")}
+                onClick={() => setMode(mode !== "browse" ? "browse" : "create")}
               >
-                <Plus className="size-4" /> {mode === "create" ? "Cancel" : "Create new"}
+                <Plus className="size-4" /> {mode !== "browse" ? "Cancel" : "Create new"}
               </Button>
               <Button variant="outline" size="sm" onClick={() => window.print()}>
                 <Printer className="size-4" /> Print
               </Button>
             </div>
           </div>
-          {mode === "create" ? (
+          {mode !== "browse" ? (
             !isChalan ? (
-              <InvoiceCreateForm
+              <InvoiceForm
+                key={mode === "edit" ? `inv-${selectedId}` : "inv-new"}
                 buyers={buyers ?? []}
                 products={products ?? []}
                 orders={orders ?? []}
                 taxRates={taxRates ?? []}
-                onCreated={onCreated}
+                existing={mode === "edit" ? invoiceDoc?.invoice : undefined}
+                onSaved={onSaved}
               />
             ) : (
-              <ChalanCreateForm
+              <ChalanForm
+                key={mode === "edit" ? `dc-${selectedId}` : "dc-new"}
                 buyers={buyers ?? []}
-                warehouses={warehouses ?? []}
                 products={products ?? []}
                 orders={orders ?? []}
-                onCreated={onCreated}
+                existing={mode === "edit" ? chalanDoc?.chalan : undefined}
+                onSaved={onSaved}
               />
             )
           ) : (
             <div className="p-5">
               <label className="grid gap-1.5 text-xs font-semibold">
-                <span>Select {isChalan ? "chalan" : "invoice"}</span>
+                <span>Select {isChalan ? "chalan" : "proforma invoice"}</span>
                 <select
                   className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9"
                   value={selectedId ?? ""}
@@ -218,51 +244,51 @@ export function DocumentsScreen() {
                   ))}
                 </select>
               </label>
-              {doc && !isChalan && "invoice" in doc && (
+              {invoiceDoc && (
                 <div className="mt-5 space-y-2 text-[13px]">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Buyer</span>
-                    <strong>{doc.invoice.buyer.name}</strong>
+                    <strong>{invoiceDoc.invoice.buyer.name}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Issue date</span>
-                    <span>{fmtDate(doc.invoice.invoiceDate)}</span>
+                    <span>{fmtDate(invoiceDoc.invoice.invoiceDate)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{doc.invoice.salesOrder?.soNo ?? "â€”"}</span>
+                    <span>{invoiceDoc.invoice.salesOrder?.soNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
-                    <span>{doc.invoice.items.length}</span>
+                    <span>{invoiceDoc.invoice.items.length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total</span>
-                    <strong>{money(doc.invoice.total)}</strong>
+                    <strong>{usd(invoiceDoc.invoice.total)}</strong>
                   </div>
                 </div>
               )}
-              {doc && isChalan && "chalan" in doc && (
+              {chalanDoc && (
                 <div className="mt-5 space-y-2 text-[13px]">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Buyer</span>
-                    <strong>{doc.chalan.buyer.name}</strong>
+                    <strong>{chalanDoc.chalan.buyer.name}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Date</span>
-                    <span>{fmtDate(doc.chalan.date)}</span>
+                    <span>{fmtDate(chalanDoc.chalan.date)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{doc.chalan.salesOrder?.soNo ?? "â€”"}</span>
+                    <span>{chalanDoc.chalan.salesOrder?.soNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Vehicle</span>
-                    <span>{doc.chalan.vehicleNo ?? "â€”"}</span>
+                    <span>{chalanDoc.chalan.vehicleNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
-                    <span>{doc.chalan.items.length}</span>
+                    <span>{chalanDoc.chalan.items.length}</span>
                   </div>
                 </div>
               )}
@@ -272,14 +298,33 @@ export function DocumentsScreen() {
                     label="Buyer (brand) — printed as “Buyer. :”"
                     value={brand}
                     onChange={setBrand}
-                    placeholder="e.g. LAHALLE"
+                    placeholder={invoiceDoc?.invoice.brand ?? "e.g. LAHALLE"}
                   />
                   <Field
                     label="Gross weight"
                     value={grossWeight}
                     onChange={setGrossWeight}
-                    placeholder="e.g. 14 KG"
+                    placeholder={invoiceDoc?.invoice.grossWeight ?? "e.g. 14 KG"}
                   />
+                  <label className="grid gap-1.5 text-xs font-semibold">
+                    <span>Bank account (printed in Bank Details)</span>
+                    <select
+                      className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
+                      value={bankAccount?.id ?? ""}
+                      onChange={(e) => setBankId(Number(e.target.value))}
+                    >
+                      {bankOptions.length === 0 && <option value="">No bank account</option>}
+                      {bankOptions.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.bankName || a.name}
+                          {a.accountNo ? ` · ${a.accountNo}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      Add, rename or remove bank accounts under Cash &amp; Bank.
+                    </span>
+                  </label>
                 </div>
               )}
               <label className="mt-4 grid gap-1.5 text-[11px] font-semibold">
@@ -288,17 +333,13 @@ export function DocumentsScreen() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder={
-                    isChalan
-                      ? settings?.["doc_chalan_notes"]
-                      : isProforma
-                        ? settings?.["doc_proforma_notes"]
-                        : settings?.["doc_invoice_terms"]
+                    isChalan ? settings?.["doc_chalan_notes"] : PROFORMA_NOTES.join("\n")
                   }
                   className="rounded-lg text-[13px] shadow-none"
                 />
               </label>
               <p className="mt-3 text-[11px] text-muted-foreground">
-                Company name, logo, address and document text are managed in Settings â†’ Company
+                Company name, logo, address and document text are managed in Settings → Company
                 profile / Document templates.
               </p>
             </div>
@@ -307,26 +348,21 @@ export function DocumentsScreen() {
         <div className="bg-workspace p-4 sm:p-8">
           {mode === "create" ? (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
-              Fill the form on the left â€” the new document will appear here.
+              Fill the form on the left — the new document will appear here.
             </div>
-          ) : doc && !isChalan && "invoice" in doc ? (
+          ) : invoiceDoc ? (
             <TradeInvoiceTemplate
-              title={isProforma ? "PROFORMA INVOICE" : "INVOICE"}
-              doc={doc}
-              notes={
-                notes ||
-                (isProforma
-                  ? settings?.["doc_proforma_notes"]
-                  : settings?.["doc_invoice_terms"])
-              }
+              title="PROFORMA INVOICE"
+              doc={invoiceDoc}
+              notes={notes || settings?.["doc_proforma_notes"]}
               brand={brand}
               grossWeight={grossWeight}
-              currency={settings?.["currency"] ?? "USD"}
+              currency="USD"
               bank={bankAccount}
               settings={settings}
             />
-          ) : doc && isChalan && "chalan" in doc ? (
-            <ChalanTemplate doc={doc} />
+          ) : chalanDoc ? (
+            <ChalanTemplate doc={chalanDoc} />
           ) : (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
               Select a document to preview.
@@ -339,8 +375,6 @@ export function DocumentsScreen() {
 }
 
 /* ---------------------------- Sales invoice / proforma (bordered trade template) ---------------------------- */
-
-
 
 const CURRENCY_SYMBOL: Record<string, string> = { BDT: "৳", USD: "$", EUR: "€" };
 
@@ -471,14 +505,7 @@ function TradeInvoiceTemplate({
         .trim(),
     )
     .filter(Boolean);
-  const noteLines = parsedNotes.length
-    ? parsedNotes
-    : [
-        "Complain should be brought to our notice in writing / mail within 7 days of delivery of the goods to you.",
-        "Supplied all trims by us has come under garment accessories by HS CODE 6217.10.00.",
-        "Payment should be made only by RTGS.",
-        "If invoice amount less than $1500 - must be paid by the RTGS or FDD only.",
-      ];
+  const noteLines = parsedNotes.length ? parsedNotes : PROFORMA_NOTES;
   const filler = Math.max(0, 12 - inv.items.length);
 
   return (
@@ -576,10 +603,16 @@ function TradeInvoiceTemplate({
         </thead>
         <tbody>
           {inv.items.map((item, i) => (
-            <tr key={i} className={`border-b ${B}`}>
+            <tr key={i} className={`border-b ${B} align-top`}>
               <td className={`border-r ${B} px-1 py-1 text-center`}>{i + 1}.</td>
-              <td className={`border-r ${B} px-2 py-1`}>{item.product.sku || item.product.name}</td>
-              <td className={`border-r ${B} px-2 py-1 font-semibold`}>{item.product.name}</td>
+              <td className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 leading-4`}>
+                {item.product.sku || item.product.name}
+              </td>
+              <td
+                className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 font-semibold leading-4`}
+              >
+                {item.product.name}
+              </td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
                 {num(item.quantity)}
               </td>
@@ -844,27 +877,42 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
   );
 }
 
-/* --------------------------- Create-new forms --------------------------- */
+/* --------------------------- Create / edit forms --------------------------- */
 
-function InvoiceCreateForm({
+const isoDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+
+function InvoiceForm({
   buyers,
   products,
   orders,
   taxRates,
-  onCreated,
+  existing,
+  onSaved,
 }: {
   buyers: Named[];
   products: ProductLite[];
   orders: SalesOrderLite[];
   taxRates: TaxRateLite[];
-  onCreated: (id: number) => void;
+  existing?: DocInvoice["invoice"] | undefined;
+  onSaved: (id: number) => void;
 }) {
   const save = useSave();
-  const [buyerId, setBuyerId] = useState<number | "">("");
+  const [invNo, setInvNo] = useState(existing?.invNo ?? "");
+  const [buyerId, setBuyerId] = useState<number | "">(existing?.buyerId ?? "");
   const [orderId, setOrderId] = useState<number | "">("");
-  const [items, setItems] = useState<LineItem[]>([{ productId: 0, quantity: "", rate: "" }]);
-  const [discount, setDiscount] = useState("0");
-  const [vatMode, setVatMode] = useState("EXCLUSIVE");
+  const [items, setItems] = useState<LineItem[]>(
+    existing?.items.length
+      ? existing.items.map((i) => ({
+          productId: i.productId,
+          quantity: String(num(i.quantity)),
+          rate: String(num(i.rate)),
+        }))
+      : [{ productId: 0, quantity: "", rate: "" }],
+  );
+  const [discount, setDiscount] = useState(String(num(existing?.discount ?? 0)));
+  const [vatMode, setVatMode] = useState(existing?.vatMode ?? "EXCLUSIVE");
+  const [brand, setBrand] = useState(existing?.brand ?? "");
+  const [grossWeight, setGrossWeight] = useState(existing?.grossWeight ?? "");
 
   const rateFor = (productId: number) => {
     const taxRateId = products.find((p) => p.id === productId)?.taxRateId;
@@ -900,57 +948,76 @@ function InvoiceCreateForm({
       onSubmit={(e) => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.currentTarget).entries());
+        const payload = {
+          invNo: invNo.trim() || null,
+          buyerId,
+          invoiceDate: v["Invoice date"],
+          dueDate: v["Due date"] || null,
+          vatMode,
+          discount: num(discount),
+          brand: brand || null,
+          grossWeight: grossWeight || null,
+          items: lines.map((i) => ({
+            productId: i.productId,
+            quantity: Number(i.quantity),
+            rate: Number(i.rate),
+            taxRateId: products.find((p) => p.id === i.productId)?.taxRateId ?? null,
+          })),
+        };
         save(
-          api
-            .post<{ id: number }>("/sales/invoices", {
-              salesOrderId: orderId || null,
-              buyerId,
-              invoiceDate: v["Invoice date"],
-              dueDate: v["Due date"],
-              vatMode,
-              discount: num(discount),
-              brand: v["Buyer brand"] || null,
-              grossWeight: v["Gross weight"] || null,
-              items: items
-                .filter((i) => i.productId)
-                .map((i) => ({
-                  productId: i.productId,
-                  quantity: Number(i.quantity),
-                  rate: Number(i.rate),
-                  taxRateId: products.find((p) => p.id === i.productId)?.taxRateId ?? null,
-                })),
-            })
-            .then((inv) => onCreated(inv.id)),
-          "Invoice created",
+          existing
+            ? api
+                .put<{ id: number }>(`/sales/invoices/${existing.id}`, payload)
+                .then(() => onSaved(existing.id))
+            : api
+                .post<{ id: number }>("/sales/invoices", {
+                  ...payload,
+                  salesOrderId: orderId || null,
+                })
+                .then((inv) => onSaved(inv.id)),
+          existing ? "Proforma invoice updated" : "Proforma invoice created",
         );
       }}
       className="space-y-4 p-5"
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Invoice no."
+          value={invNo}
+          onChange={setInvNo}
+          placeholder={existing ? existing.invNo : "Leave blank to auto-number"}
+        />
         <EntitySelect label="Buyer" value={buyerId} onChange={setBuyerId} options={buyers} />
-        <label className="grid gap-1.5 text-xs font-semibold">
-          <span>Sales order (optional)</span>
-          <select
-            className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
-            value={orderId}
-            onChange={(e) => pickOrder(Number(e.target.value))}
-          >
-            <option value="">None</option>
-            {orders.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.soNo} · {o.buyer.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!existing && (
+          <label className="grid gap-1.5 text-xs font-semibold">
+            <span>Sales order (optional)</span>
+            <select
+              className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
+              value={orderId}
+              onChange={(e) => pickOrder(Number(e.target.value))}
+            >
+              <option value="">None</option>
+              {orders.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.soNo} · {o.buyer.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <Field
           label="Invoice date"
           name="Invoice date"
           type="date"
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          defaultValue={isoDate(existing?.invoiceDate) || new Date().toISOString().slice(0, 10)}
           required
         />
-        <Field label="Due date" name="Due date" type="date" />
+        <Field
+          label="Due date"
+          name="Due date"
+          type="date"
+          defaultValue={isoDate(existing?.dueDate)}
+        />
         <label className="grid gap-1.5 text-xs font-semibold">
           <span>VAT mode</span>
           <select
@@ -962,62 +1029,69 @@ function InvoiceCreateForm({
             <option>INCLUSIVE</option>
           </select>
         </label>
+        <Field label="Discount ($)" type="number" value={discount} onChange={setDiscount} />
+        <Field label="Buyer brand" value={brand} onChange={setBrand} placeholder="e.g. LAHALLE" />
         <Field
-          label="Discount"
-          name="Discount"
-          type="number"
-          value={discount}
-          onChange={setDiscount}
+          label="Gross weight"
+          value={grossWeight}
+          onChange={setGrossWeight}
+          placeholder="e.g. 14 KG"
         />
-        <Field label="Buyer brand" name="Buyer brand" placeholder="e.g. LAHALLE" />
-        <Field label="Gross weight" name="Gross weight" placeholder="e.g. 14 KG" />
       </div>
       <ItemsEditor products={products} items={items} onChange={setItems} priceField="salesPrice" />
       <div className="rounded-lg border bg-surface-subtle px-4 py-3 text-[12px]">
         <div className="flex justify-end gap-6">
           <span className="text-muted-foreground">Subtotal</span>
-          <span className="w-28 text-right font-semibold tabular-nums">{money(subtotal)}</span>
+          <span className="w-28 text-right font-semibold tabular-nums">{usd(subtotal)}</span>
         </div>
         <div className="flex justify-end gap-6">
           <span className="text-muted-foreground">VAT (auto)</span>
-          <span className="w-28 text-right font-semibold tabular-nums">{money(vat)}</span>
+          <span className="w-28 text-right font-semibold tabular-nums">{usd(vat)}</span>
         </div>
         <div className="flex justify-end gap-6">
           <span className="text-muted-foreground">Discount</span>
-          <span className="w-28 text-right font-semibold tabular-nums">-{money(discount)}</span>
+          <span className="w-28 text-right font-semibold tabular-nums">-{usd(discount)}</span>
         </div>
         <div className="flex justify-end gap-6 border-t pt-1.5">
           <span className="font-semibold">Total</span>
-          <span className="w-28 text-right font-bold tabular-nums">{money(total)}</span>
+          <span className="w-28 text-right font-bold tabular-nums">{usd(total)}</span>
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={!buyerId}>
-          <Save /> Create invoice
+        <Button type="submit" size="sm" disabled={!buyerId || lines.length === 0}>
+          <Save /> {existing ? "Save changes" : "Create proforma invoice"}
         </Button>
       </div>
     </form>
   );
 }
 
-function ChalanCreateForm({
+function ChalanForm({
   buyers,
-  warehouses,
   products,
   orders,
-  onCreated,
+  existing,
+  onSaved,
 }: {
   buyers: Named[];
-  warehouses: Named[];
   products: ProductLite[];
   orders: SalesOrderLite[];
-  onCreated: (id: number) => void;
+  existing?: DocChalan["chalan"] | undefined;
+  onSaved: (id: number) => void;
 }) {
   const save = useSave();
-  const [buyerId, setBuyerId] = useState<number | "">("");
-  const [warehouseId, setWarehouseId] = useState<number | "">("");
+  const [buyerId, setBuyerId] = useState<number | "">(existing?.buyerId ?? "");
   const [orderId, setOrderId] = useState<number | "">("");
-  const [items, setItems] = useState<LineItem[]>([{ productId: 0, quantity: "", rate: "" }]);
+  const [items, setItems] = useState<LineItem[]>(
+    existing?.items.length
+      ? existing.items.map((i) => ({
+          productId: i.productId,
+          quantity: String(num(i.quantity)),
+          rate: "0",
+        }))
+      : [{ productId: 0, quantity: "", rate: "0" }],
+  );
+  const lines = items.filter((i) => i.productId);
 
   const pickOrder = (id: number) => {
     setOrderId(id);
@@ -1039,68 +1113,84 @@ function ChalanCreateForm({
       onSubmit={(e) => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.currentTarget).entries());
+        const payload = {
+          buyerId,
+          date: v["Delivery date"],
+          driverName: v["Driver name"] || null,
+          vehicleNo: v["Vehicle no."] || null,
+          styleNo: v["Style ref"] || null,
+          erpNo: v["ERP no."] || null,
+          notes: v["Notes"] || null,
+          items: lines.map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
+        };
         save(
-          api
-            .post<{ id: number }>("/sales/chalans", {
-              salesOrderId: orderId || null,
-              buyerId,
-              warehouseId,
-              date: v["Delivery date"],
-              driverName: v["Driver name"],
-              vehicleNo: v["Vehicle no."],
-              styleNo: v["Style ref"] || null,
-              erpNo: v["ERP no."] || null,
-              notes: v["Notes"],
-              items: items
-                .filter((i) => i.productId)
-                .map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
-            })
-            .then((ch) => onCreated(ch.id)),
-          "Chalan created",
+          existing
+            ? api
+                .put<{ id: number }>(`/sales/chalans/${existing.id}`, payload)
+                .then(() => onSaved(existing.id))
+            : api
+                .post<{ id: number }>("/sales/chalans", {
+                  ...payload,
+                  salesOrderId: orderId || null,
+                })
+                .then((ch) => onSaved(ch.id)),
+          existing ? "Chalan updated" : "Chalan created",
         );
       }}
       className="space-y-4 p-5"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <EntitySelect label="Buyer" value={buyerId} onChange={setBuyerId} options={buyers} />
-        <EntitySelect
-          label="Warehouse"
-          value={warehouseId}
-          onChange={setWarehouseId}
-          options={warehouses}
-        />
-        <label className="grid gap-1.5 text-xs font-semibold">
-          <span>Sales order (optional)</span>
-          <select
-            className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
-            value={orderId}
-            onChange={(e) => pickOrder(Number(e.target.value))}
-          >
-            <option value="">None</option>
-            {orders.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.soNo} · {o.buyer.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!existing && (
+          <label className="grid gap-1.5 text-xs font-semibold">
+            <span>Sales order (optional)</span>
+            <select
+              className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
+              value={orderId}
+              onChange={(e) => pickOrder(Number(e.target.value))}
+            >
+              <option value="">None</option>
+              {orders.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.soNo} · {o.buyer.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <Field
           label="Delivery date"
           name="Delivery date"
           type="date"
-          defaultValue={new Date().toISOString().slice(0, 10)}
+          defaultValue={isoDate(existing?.date) || new Date().toISOString().slice(0, 10)}
           required
         />
-        <Field label="Driver name" name="Driver name" />
-        <Field label="Vehicle no." name="Vehicle no." />
-        <Field label="Style ref" name="Style ref" placeholder="e.g. LH4 PRUNE V2 LKLH26-63 D1" />
-        <Field label="ERP no." name="ERP no." placeholder="e.g. LKL-TB-26-22056" />
-        <Field label="Notes" name="Notes" />
+        <Field label="Driver name" name="Driver name" defaultValue={existing?.driverName ?? ""} />
+        <Field label="Vehicle no." name="Vehicle no." defaultValue={existing?.vehicleNo ?? ""} />
+        <Field
+          label="Style ref"
+          name="Style ref"
+          defaultValue={existing?.styleNo ?? ""}
+          placeholder="e.g. LH4 PRUNE V2 LKLH26-63 D1"
+        />
+        <Field
+          label="ERP no."
+          name="ERP no."
+          defaultValue={existing?.erpNo ?? ""}
+          placeholder="e.g. LKL-TB-26-22056"
+        />
+        <Field label="Notes" name="Notes" defaultValue={existing?.notes ?? ""} />
       </div>
-      <ItemsEditor products={products} items={items} onChange={setItems} priceField="salesPrice" />
+      <ItemsEditor
+        products={products}
+        items={items}
+        onChange={setItems}
+        priceField="salesPrice"
+        showRate={false}
+      />
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={!buyerId || !warehouseId}>
-          <Save /> Create chalan
+        <Button type="submit" size="sm" disabled={!buyerId || lines.length === 0}>
+          <Save /> {existing ? "Save changes" : "Create chalan"}
         </Button>
       </div>
     </form>

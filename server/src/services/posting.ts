@@ -11,7 +11,10 @@ import { nextDocNumber } from "./numbering";
 
 // Guards against a document whose stored totals don't match its lines — the
 // API recomputes totals on write, this is a last-line defence inside the tx.
-function assertDocumentTotals(inv: { subtotal: unknown; taxTotal: unknown; discount?: unknown; total: unknown }, ref: string) {
+function assertDocumentTotals(
+  inv: { subtotal: unknown; taxTotal: unknown; discount?: unknown; total: unknown },
+  ref: string,
+) {
   const expected = Number(inv.subtotal) + Number(inv.taxTotal) - Number(inv.discount ?? 0);
   if (Math.abs(expected - Number(inv.total)) > 0.01) {
     throw new ApiError(500, `Inconsistent totals on ${ref}: ${expected} vs stored ${inv.total}`);
@@ -58,7 +61,12 @@ export async function postPurchaseInvoice(tx: Tx, invoiceId: number) {
     lines: [
       { accountCode: "1200", debit: Number(inv.subtotal) },
       ...(Number(inv.taxTotal) > 0 ? [{ accountCode: "2300", debit: Number(inv.taxTotal) }] : []), // input VAT reclaimable
-      { accountCode: "2100", credit: Number(inv.total), partyType: "supplier" as const, partyId: inv.supplierId },
+      {
+        accountCode: "2100",
+        credit: Number(inv.total),
+        partyType: "supplier" as const,
+        partyId: inv.supplierId,
+      },
     ],
   });
 
@@ -126,7 +134,12 @@ export async function postSupplierPayment(tx: Tx, paymentId: number) {
     refType: "supplier_payment",
     refId: payment.id,
     lines: [
-      { accountCode: "2100", debit: Number(payment.amount), partyType: "supplier", partyId: payment.supplierId },
+      {
+        accountCode: "2100",
+        debit: Number(payment.amount),
+        partyType: "supplier",
+        partyId: payment.supplierId,
+      },
       { accountCode: account.type === "CASH" ? "1100" : "1110", credit: Number(payment.amount) },
     ],
   });
@@ -139,6 +152,8 @@ export async function postDeliveryChalan(tx: Tx, chalanId: number) {
     include: { items: true },
   });
   for (const item of chalan.items) {
+    // Challans are issued from the document generator ahead of stock intake,
+    // so the balance is allowed to go negative rather than blocking the issue.
     await applyStockMovement(tx, {
       productId: item.productId,
       warehouseId: chalan.warehouseId,
@@ -148,6 +163,7 @@ export async function postDeliveryChalan(tx: Tx, chalanId: number) {
       refId: chalan.id,
       refNo: chalan.dcNo,
       createdById: chalan.createdById ?? undefined,
+      allowNegative: true,
     });
     if (chalan.salesOrderId) {
       const soItem = await tx.salesOrderItem.findFirst({
@@ -161,14 +177,51 @@ export async function postDeliveryChalan(tx: Tx, chalanId: number) {
       }
     }
   }
-  if (chalan.salesOrderId) {
-    const items = await tx.salesOrderItem.findMany({ where: { orderId: chalan.salesOrderId } });
-    const allDone = items.every((i) => i.deliveredQty.gte(i.quantity));
-    await tx.salesOrder.update({
-      where: { id: chalan.salesOrderId },
-      data: { status: allDone ? "COMPLETED" : "PARTIAL" },
+  if (chalan.salesOrderId) await syncSalesOrderStatus(tx, chalan.salesOrderId);
+}
+
+// Undo a chalan's stock OUT and SO delivered-qty so it can be re-posted after an edit.
+export async function reverseDeliveryChalan(tx: Tx, chalanId: number) {
+  const chalan = await tx.deliveryChalan.findUniqueOrThrow({
+    where: { id: chalanId },
+    include: { items: true },
+  });
+  for (const item of chalan.items) {
+    await applyStockMovement(tx, {
+      productId: item.productId,
+      warehouseId: chalan.warehouseId,
+      type: "IN",
+      quantity: item.quantity,
+      refType: "delivery_chalan",
+      refId: chalan.id,
+      refNo: chalan.dcNo,
+      reason: "Reversed for edit",
+      createdById: chalan.createdById ?? undefined,
+      allowNegative: true,
     });
+    if (chalan.salesOrderId) {
+      const soItem = await tx.salesOrderItem.findFirst({
+        where: { orderId: chalan.salesOrderId, productId: item.productId },
+      });
+      if (soItem) {
+        await tx.salesOrderItem.update({
+          where: { id: soItem.id },
+          data: { deliveredQty: soItem.deliveredQty.minus(item.quantity) },
+        });
+      }
+    }
   }
+  if (chalan.salesOrderId) await syncSalesOrderStatus(tx, chalan.salesOrderId);
+}
+
+async function syncSalesOrderStatus(tx: Tx, salesOrderId: number) {
+  const items = await tx.salesOrderItem.findMany({ where: { orderId: salesOrderId } });
+  const allDone = items.every((i) => i.deliveredQty.gte(i.quantity));
+  const anyDone = items.some((i) => i.deliveredQty.gt(0));
+  await tx.salesOrder.update({
+    where: { id: salesOrderId },
+    data: { status: allDone ? "COMPLETED" : anyDone ? "PARTIAL" : "APPROVED" },
+  });
 }
 
 // ── Sales invoice post: receivable up + journal ──
@@ -210,6 +263,21 @@ export async function postSalesInvoice(tx: Tx, invoiceId: number) {
       { accountCode: "1200", credit: cogs },
     ],
   });
+}
+
+// Undo an invoice's receivable + journal so it can be re-posted after an edit.
+export async function reverseSalesInvoice(tx: Tx, invoiceId: number) {
+  const inv = await tx.salesInvoice.findUniqueOrThrow({ where: { id: invoiceId } });
+  await postBuyerLedger(tx, {
+    buyerId: inv.buyerId,
+    date: inv.invoiceDate,
+    refType: "sales_invoice",
+    refId: inv.id,
+    refNo: inv.invNo,
+    description: `Sales invoice ${inv.invNo} reversed for edit`,
+    credit: inv.total,
+  });
+  await tx.journalEntry.deleteMany({ where: { refType: "sales_invoice", refId: inv.id } });
 }
 
 // ── Sales return post: stock IN + receivable down + journal reversal ──
@@ -343,8 +411,18 @@ export async function postStockTransfer(tx: Tx, transferId: number) {
     refNo: t.transferNo,
     createdById: t.createdById ?? undefined,
   };
-  await applyStockMovement(tx, { ...base, warehouseId: t.fromWarehouseId, type: "TRANSFER_OUT", quantity: t.quantity.neg() });
-  await applyStockMovement(tx, { ...base, warehouseId: t.toWarehouseId, type: "TRANSFER_IN", quantity: t.quantity });
+  await applyStockMovement(tx, {
+    ...base,
+    warehouseId: t.fromWarehouseId,
+    type: "TRANSFER_OUT",
+    quantity: t.quantity.neg(),
+  });
+  await applyStockMovement(tx, {
+    ...base,
+    warehouseId: t.toWarehouseId,
+    type: "TRANSFER_IN",
+    quantity: t.quantity,
+  });
 }
 
 // ── Cash/bank ledger writer — single funnel for account balance changes ──
@@ -417,7 +495,10 @@ export async function applyCashTransaction(
         createdById: input.createdById,
       },
     });
-    await tx.cashAccount.update({ where: { id: input.toAccountId }, data: { balance: destBalance } });
+    await tx.cashAccount.update({
+      where: { id: input.toAccountId },
+      data: { balance: destBalance },
+    });
   }
   return txn;
 }

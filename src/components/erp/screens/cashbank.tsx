@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Landmark } from "lucide-react";
+import { Landmark, Pencil, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ActionDialog, DataTable, PageHeader, Panel } from "../ui";
 import { api } from "@/lib/api";
 import { fmtDate, money, num, statusLabel, useData, useSave } from "./shared";
@@ -8,10 +9,18 @@ interface Account {
   id: number;
   name: string;
   type: "CASH" | "BANK";
-  bankName?: string;
+  bankName?: string | null;
+  accountNo?: string | null;
   balance: string;
   status: string;
 }
+
+const ACCOUNT_FIELDS = [
+  { label: "Account name", name: "name", required: true },
+  { label: "Type", name: "type", options: ["BANK", "CASH"], required: true },
+  { label: "Bank name", name: "bankName" },
+  { label: "Account no.", name: "accountNo" },
+];
 
 interface Txn {
   id: number;
@@ -27,9 +36,21 @@ interface Txn {
 
 export function CashBankScreen() {
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
   const save = useSave();
   const { data: accounts } = useData<Account[]>(["cash-accounts"], "/cash-bank/accounts");
   const { data: txns } = useData<Txn[]>(["cash-txns"], "/cash-bank/transactions");
+
+  const openAccount = (a: Account | null) => {
+    setEditing(a);
+    setAccountOpen(true);
+  };
+  const removeAccount = (a: Account) => {
+    if (!window.confirm(`Remove "${a.name}"? Accounts with transactions are deactivated instead.`))
+      return;
+    save(api.del(`/cash-bank/accounts/${a.id}`), "Account removed");
+  };
 
   return (
     <>
@@ -54,9 +75,67 @@ export function CashBankScreen() {
             </div>
             <div className="mt-3 text-xl font-bold">{money(a.balance)}</div>
             <div className="mt-1 text-[13px] text-muted-foreground">{a.name}</div>
+            {(a.bankName || a.accountNo) && (
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                {[a.bankName, a.accountNo].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            <div className="mt-3 flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => openAccount(a)}
+              >
+                <Pencil className="size-3.5" /> Edit
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-destructive"
+                onClick={() => removeAccount(a)}
+              >
+                <Trash2 className="size-3.5" /> Delete
+              </Button>
+            </div>
           </div>
         ))}
+        <button
+          type="button"
+          onClick={() => openAccount(null)}
+          className="grid min-h-[120px] place-items-center rounded-lg border border-dashed bg-card text-sm font-semibold text-muted-foreground hover:text-foreground"
+        >
+          <span className="flex items-center gap-1.5">
+            <Plus className="size-4" /> Add account
+          </span>
+        </button>
       </div>
+      <ActionDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        title={editing ? "Edit account" : "Add account"}
+        description="Cash or bank account used for payments, collections and printed bank details."
+        fields={ACCOUNT_FIELDS}
+        submitLabel={editing ? "Save changes" : "Add account"}
+        initialValues={
+          editing
+            ? {
+                name: editing.name,
+                type: editing.type,
+                bankName: editing.bankName ?? "",
+                accountNo: editing.accountNo ?? "",
+              }
+            : undefined
+        }
+        onSubmit={(values) =>
+          save(
+            editing
+              ? api.put(`/cash-bank/accounts/${editing.id}`, values)
+              : api.post("/cash-bank/accounts", values),
+            editing ? "Account updated" : "Account added",
+          )
+        }
+      />
       <Panel title="Transaction ledger" subtitle="Receipts, payments and running account balances">
         <DataTable
           columns={[
@@ -77,8 +156,7 @@ export function CashBankScreen() {
                 ? money(t.amount)
                 : "—",
             payment:
-              ["PAYMENT", "ADJUSTMENT", "TRANSFER"].includes(t.type) &&
-              !t.txnNo.endsWith("-IN")
+              ["PAYMENT", "ADJUSTMENT", "TRANSFER"].includes(t.type) && !t.txnNo.endsWith("-IN")
                 ? money(t.amount)
                 : "—",
             balance: money(t.balanceAfter),

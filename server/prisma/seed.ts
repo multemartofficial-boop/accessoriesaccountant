@@ -56,8 +56,8 @@ async function main() {
     where: { id: 1 },
     create: {
       id: 1,
-      name: "GarmentTrade",
-      legalName: "Accessories Trading Co.",
+      name: "RAHMAN'S LABEL",
+      legalName: "RAHMAN'S LABEL",
       address: "Tejgaon Industrial Area, Dhaka 1208",
       phone: "+880 2 8877665",
       email: "info@garmenttrade.com",
