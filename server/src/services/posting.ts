@@ -2,7 +2,7 @@ import { ApiError } from "../middleware/error";
 import type { Tx } from "../db";
 import { postBuyerLedger, postSupplierLedger } from "./ledger";
 import { postJournal } from "./journal";
-import { applyStockMovement } from "./stock";
+import { applyStockMovement, applyStockMovements } from "./stock";
 import { nextDocNumber } from "./numbering";
 
 // GL account codes (seeded):
@@ -146,82 +146,58 @@ export async function postSupplierPayment(tx: Tx, paymentId: number) {
 }
 
 // ── Delivery chalan post: stock OUT ──
+// Challans are issued from the document generator ahead of stock intake,
+// so balances are allowed to go negative rather than blocking the issue.
 export async function postDeliveryChalan(tx: Tx, chalanId: number) {
-  const chalan = await tx.deliveryChalan.findUniqueOrThrow({
-    where: { id: chalanId },
-    include: { items: true },
-  });
-  for (const item of chalan.items) {
-    // Challans are issued from the document generator ahead of stock intake,
-    // so the balance is allowed to go negative rather than blocking the issue.
-    await applyStockMovement(tx, {
-      productId: item.productId,
-      warehouseId: chalan.warehouseId,
-      type: "OUT",
-      quantity: item.quantity.neg(),
-      refType: "delivery_chalan",
-      refId: chalan.id,
-      refNo: chalan.dcNo,
-      createdById: chalan.createdById ?? undefined,
-      allowNegative: true,
-    });
-    if (chalan.salesOrderId) {
-      const soItem = await tx.salesOrderItem.findFirst({
-        where: { orderId: chalan.salesOrderId, productId: item.productId },
-      });
-      if (soItem) {
-        await tx.salesOrderItem.update({
-          where: { id: soItem.id },
-          data: { deliveredQty: soItem.deliveredQty.plus(item.quantity) },
-        });
-      }
-    }
-  }
-  if (chalan.salesOrderId) await syncSalesOrderStatus(tx, chalan.salesOrderId);
+  await moveChalanStock(tx, chalanId, "OUT");
 }
 
 // Undo a chalan's stock OUT and SO delivered-qty so it can be re-posted after an edit.
 export async function reverseDeliveryChalan(tx: Tx, chalanId: number) {
+  await moveChalanStock(tx, chalanId, "IN");
+}
+
+async function moveChalanStock(tx: Tx, chalanId: number, direction: "OUT" | "IN") {
   const chalan = await tx.deliveryChalan.findUniqueOrThrow({
     where: { id: chalanId },
     include: { items: true },
   });
-  for (const item of chalan.items) {
-    await applyStockMovement(tx, {
-      productId: item.productId,
-      warehouseId: chalan.warehouseId,
-      type: "IN",
-      quantity: item.quantity,
+  if (chalan.items.length === 0) return;
+  const sign = direction === "OUT" ? -1 : 1;
+
+  await applyStockMovements(
+    tx,
+    chalan.warehouseId,
+    chalan.items.map((i) => ({ productId: i.productId, quantity: i.quantity.mul(sign) })),
+    {
+      type: direction,
       refType: "delivery_chalan",
       refId: chalan.id,
       refNo: chalan.dcNo,
-      reason: "Reversed for edit",
+      reason: direction === "IN" ? "Reversed for edit" : undefined,
       createdById: chalan.createdById ?? undefined,
-      allowNegative: true,
-    });
-    if (chalan.salesOrderId) {
-      const soItem = await tx.salesOrderItem.findFirst({
-        where: { orderId: chalan.salesOrderId, productId: item.productId },
-      });
-      if (soItem) {
-        await tx.salesOrderItem.update({
-          where: { id: soItem.id },
-          data: { deliveredQty: soItem.deliveredQty.minus(item.quantity) },
-        });
-      }
-    }
-  }
-  if (chalan.salesOrderId) await syncSalesOrderStatus(tx, chalan.salesOrderId);
-}
+    },
+  );
 
-async function syncSalesOrderStatus(tx: Tx, salesOrderId: number) {
-  const items = await tx.salesOrderItem.findMany({ where: { orderId: salesOrderId } });
-  const allDone = items.every((i) => i.deliveredQty.gte(i.quantity));
-  const anyDone = items.some((i) => i.deliveredQty.gt(0));
-  await tx.salesOrder.update({
-    where: { id: salesOrderId },
-    data: { status: allDone ? "COMPLETED" : anyDone ? "PARTIAL" : "APPROVED" },
-  });
+  if (chalan.salesOrderId) {
+    const soItems = await tx.salesOrderItem.findMany({ where: { orderId: chalan.salesOrderId } });
+    for (const item of chalan.items) {
+      const soItem = soItems.find((s) => s.productId === item.productId);
+      if (!soItem) continue;
+      const delivered = soItem.deliveredQty.plus(item.quantity.mul(-sign));
+      soItem.deliveredQty = delivered;
+      await tx.salesOrderItem.update({
+        where: { id: soItem.id },
+        data: { deliveredQty: delivered },
+      });
+    }
+    const allDone = soItems.every((i) => i.deliveredQty.gte(i.quantity));
+    const anyDone = soItems.some((i) => i.deliveredQty.gt(0));
+    await tx.salesOrder.update({
+      where: { id: chalan.salesOrderId },
+      data: { status: allDone ? "COMPLETED" : anyDone ? "PARTIAL" : "APPROVED" },
+    });
+  }
 }
 
 // ── Sales invoice post: receivable up + journal ──
@@ -244,11 +220,15 @@ export async function postSalesInvoice(tx: Tx, invoiceId: number) {
 
   // COGS from current purchase price (moving average would need a cost layer —
   // purchase price is the documented approximation for this build).
-  let cogs = 0;
-  for (const item of inv.items) {
-    const product = await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
-    cogs += Number(product.purchasePrice) * Number(item.quantity);
-  }
+  const products = await tx.product.findMany({
+    where: { id: { in: inv.items.map((i) => i.productId) } },
+    select: { id: true, purchasePrice: true },
+  });
+  const costById = new Map(products.map((p) => [p.id, Number(p.purchasePrice)]));
+  const cogs = inv.items.reduce(
+    (s, i) => s + (costById.get(i.productId) ?? 0) * Number(i.quantity),
+    0,
+  );
 
   await postJournal(tx, {
     date: inv.invoiceDate,

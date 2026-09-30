@@ -881,6 +881,9 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
 
 const isoDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
+// Only the queries a document save actually changes — not the whole cache.
+const DOC_KEYS: unknown[][] = [["doc-sources"], ["document"], ["products"], ["sales-orders"]];
+
 function InvoiceForm({
   buyers,
   products,
@@ -897,6 +900,7 @@ function InvoiceForm({
   onSaved: (id: number) => void;
 }) {
   const save = useSave();
+  const [saving, setSaving] = useState(false);
   const [invNo, setInvNo] = useState(existing?.invNo ?? "");
   const [buyerId, setBuyerId] = useState<number | "">(existing?.buyerId ?? "");
   const [orderId, setOrderId] = useState<number | "">("");
@@ -964,6 +968,8 @@ function InvoiceForm({
             taxRateId: products.find((p) => p.id === i.productId)?.taxRateId ?? null,
           })),
         };
+        if (saving) return;
+        setSaving(true);
         save(
           existing
             ? api
@@ -976,7 +982,8 @@ function InvoiceForm({
                 })
                 .then((inv) => onSaved(inv.id)),
           existing ? "Proforma invoice updated" : "Proforma invoice created",
-        );
+          DOC_KEYS,
+        ).finally(() => setSaving(false));
       }}
       className="space-y-4 p-5"
     >
@@ -1058,8 +1065,8 @@ function InvoiceForm({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={!buyerId || lines.length === 0}>
-          <Save /> {existing ? "Save changes" : "Create proforma invoice"}
+        <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
+          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create proforma invoice"}
         </Button>
       </div>
     </form>
@@ -1080,6 +1087,7 @@ function ChalanForm({
   onSaved: (id: number) => void;
 }) {
   const save = useSave();
+  const [saving, setSaving] = useState(false);
   const [buyerId, setBuyerId] = useState<number | "">(existing?.buyerId ?? "");
   const [orderId, setOrderId] = useState<number | "">("");
   const [items, setItems] = useState<LineItem[]>(
@@ -1123,6 +1131,8 @@ function ChalanForm({
           notes: v["Notes"] || null,
           items: lines.map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
         };
+        if (saving) return;
+        setSaving(true);
         save(
           existing
             ? api
@@ -1135,7 +1145,8 @@ function ChalanForm({
                 })
                 .then((ch) => onSaved(ch.id)),
           existing ? "Chalan updated" : "Chalan created",
-        );
+          DOC_KEYS,
+        ).finally(() => setSaving(false));
       }}
       className="space-y-4 p-5"
     >
@@ -1189,8 +1200,8 @@ function ChalanForm({
         showRate={false}
       />
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={!buyerId || lines.length === 0}>
-          <Save /> {existing ? "Save changes" : "Create chalan"}
+        <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
+          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create chalan"}
         </Button>
       </div>
     </form>

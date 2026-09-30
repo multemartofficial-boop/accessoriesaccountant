@@ -50,7 +50,20 @@ async function buildInvoiceLines(
   const inclusive = vatMode === "INCLUSIVE";
   let subtotal = new Prisma.Decimal(0);
   let taxTotal = new Prisma.Decimal(0);
-  const lineData = [] as Prisma.SalesInvoiceItemCreateWithoutInvoiceInput[];
+  const lineData = [] as Prisma.SalesInvoiceItemCreateManyInvoiceInput[];
+  // One round-trip for every tax rate on the document — the remote DB makes per-line lookups slow.
+  const taxIds = [
+    ...new Set(
+      items
+        .map((i) => i.taxRateId)
+        .filter(Boolean)
+        .map(Number),
+    ),
+  ];
+  const taxRates = taxIds.length
+    ? await tx.taxRate.findMany({ where: { id: { in: taxIds } } })
+    : [];
+  const taxById = new Map(taxRates.map((t) => [t.id, t]));
   for (const item of items) {
     const qty = new Prisma.Decimal(item.quantity);
     const rate = new Prisma.Decimal(item.rate ?? 0);
@@ -58,8 +71,9 @@ async function buildInvoiceLines(
     let tax = new Prisma.Decimal(0);
     let net = gross;
     if (item.taxRateId) {
-      const taxRate = await tx.taxRate.findUniqueOrThrow({ where: { id: Number(item.taxRateId) } });
-      const pct = taxRate.ratePercent;
+      const taxRate = taxById.get(Number(item.taxRateId));
+      if (!taxRate) badRequest(`Unknown tax rate ${item.taxRateId}`);
+      const pct = taxRate!.ratePercent;
       if (inclusive) {
         // rate already includes VAT: net = gross / (1 + pct/100)
         net = gross.div(pct.plus(100)).mul(100);
@@ -71,10 +85,10 @@ async function buildInvoiceLines(
     subtotal = subtotal.plus(net);
     taxTotal = taxTotal.plus(tax);
     lineData.push({
-      product: { connect: { id: Number(item.productId) } },
+      productId: Number(item.productId),
       quantity: qty,
       rate,
-      taxRate: item.taxRateId ? { connect: { id: Number(item.taxRateId) } } : undefined,
+      taxRateId: item.taxRateId ? Number(item.taxRateId) : null,
       taxAmount: tax,
       total: net.plus(tax),
     });
@@ -311,7 +325,7 @@ salesRouter.post(
           erpNo,
           notes,
           createdById: req.user?.id,
-          items: { create: chalanItems(items) },
+          items: { createMany: { data: chalanItems(items) } },
         },
       });
       await postDeliveryChalan(tx, created.id);
@@ -352,7 +366,7 @@ salesRouter.put(
           ...(styleNo !== undefined && { styleNo }),
           ...(erpNo !== undefined && { erpNo }),
           ...(notes !== undefined && { notes }),
-          ...(items && { items: { create: chalanItems(items) } }),
+          ...(items && { items: { createMany: { data: chalanItems(items) } } }),
         },
         include: { items: { include: { product: true } }, buyer: true },
       });
@@ -440,7 +454,7 @@ salesRouter.post(
           grossWeight,
           notes,
           createdById: req.user?.id,
-          items: { create: lineData },
+          items: { createMany: { data: lineData } },
         },
       });
       await postSalesInvoice(tx, created.id);
@@ -512,7 +526,7 @@ salesRouter.put(
           subtotal: built.subtotal,
           taxTotal: built.taxTotal,
           total: built.total,
-          items: { create: built.lineData },
+          items: { createMany: { data: built.lineData } },
         };
       }
 

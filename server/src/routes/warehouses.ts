@@ -14,6 +14,7 @@ warehousesRouter.get(
   asyncHandler(async (_req, res) => {
     res.json(
       await prisma.warehouse.findMany({
+        where: _req.query.all ? {} : { status: "ACTIVE" },
         include: { _count: { select: { stockBalances: true } } },
         orderBy: { code: "asc" },
       }),
@@ -43,8 +44,18 @@ warehousesRouter.put(
     const before = await prisma.warehouse.findUnique({ where: { id } });
     if (!before) throw new ApiError(404, "Warehouse not found");
     const { name, location, manager, status } = req.body ?? {};
-    const warehouse = await prisma.warehouse.update({ where: { id }, data: { name, location, manager, status } });
-    await logAudit({ action: "UPDATE", module: MODULE, recordId: before.code, before, after: warehouse, req });
+    const warehouse = await prisma.warehouse.update({
+      where: { id },
+      data: { name, location, manager, status },
+    });
+    await logAudit({
+      action: "UPDATE",
+      module: MODULE,
+      recordId: before.code,
+      before,
+      after: warehouse,
+      req,
+    });
     res.json(warehouse);
   }),
 );
@@ -82,7 +93,8 @@ warehousesRouter.post(
   "/transfers",
   requireRole("ADMIN", "MANAGER"),
   asyncHandler(async (req, res) => {
-    const { fromWarehouseId, toWarehouseId, productId, quantity, transferDate, notes } = req.body ?? {};
+    const { fromWarehouseId, toWarehouseId, productId, quantity, transferDate, notes } =
+      req.body ?? {};
     if (!fromWarehouseId || !toWarehouseId || !productId || !quantity) {
       badRequest("fromWarehouseId, toWarehouseId, productId and quantity are required");
     }
@@ -113,7 +125,10 @@ warehousesRouter.post(
           requestedById: req.user?.id,
         },
       });
-      await logAudit({ action: "CREATE", module: MODULE, recordId: transferNo, after: created, req }, tx);
+      await logAudit(
+        { action: "CREATE", module: MODULE, recordId: transferNo, after: created, req },
+        tx,
+      );
       return created;
     });
     res.status(201).json(transfer);

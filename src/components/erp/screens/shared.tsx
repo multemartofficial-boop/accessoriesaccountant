@@ -28,13 +28,20 @@ export function useData<T>(key: unknown[], path: string, enabled = true) {
   return useQuery({ queryKey: key, queryFn: () => api.get<T>(path), enabled });
 }
 
-// Runs a mutation promise: invalidates all queries on success, toasts errors.
+// Runs a mutation promise: invalidates queries on success, toasts errors.
+// Pass `keys` to refetch only the affected queries — refetching everything
+// against the remote DB is what makes saves feel slow.
 export function useSave() {
   const qc = useQueryClient();
-  return (promise: Promise<unknown>, label = "Saved successfully"): Promise<void> =>
+  return (
+    promise: Promise<unknown>,
+    label = "Saved successfully",
+    keys?: unknown[][],
+  ): Promise<void> =>
     promise
       .then(() => {
-        qc.invalidateQueries();
+        if (keys) keys.forEach((queryKey) => qc.invalidateQueries({ queryKey }));
+        else qc.invalidateQueries();
         toast.success(label);
       })
       .catch((err) => {
