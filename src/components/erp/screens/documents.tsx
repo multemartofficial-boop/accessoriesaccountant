@@ -154,26 +154,69 @@ export function DocumentsScreen() {
     Boolean(selectedId),
   );
 
-  const onSaved = (id: number) => {
-    setDocId(id);
-    setMode("browse");
-  };
   const invoiceDoc = doc && !isChalan && "invoice" in doc ? doc : undefined;
   const chalanDoc = doc && isChalan && "chalan" in doc ? doc : undefined;
 
   // Table header labels are overridable per document (double-click in the
-  // preview) and stored as JSON in the key-value settings table.
+  // preview) and stored as JSON in the key-value settings table. While a new
+  // document is being created they live in local state and are saved under
+  // the new document's id once it exists.
   const qc = useQueryClient();
   const save = useSave();
-  const labelsKey = `doc_headers_${isChalan ? "chalan" : "invoice"}_${selectedId}`;
-  const labels = parseLabels(settings?.[labelsKey]);
+  const { data: company } = useData<Company>(["company"], "/settings/company");
+  const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
+  const keyFor = (id: number | undefined) => `doc_headers_${isChalan ? "chalan" : "invoice"}_${id}`;
+  const persistLabels = (key: string, next: Record<string, string>) => {
+    const json = JSON.stringify(next);
+    qc.setQueryData<Record<string, string>>(["settings"], (s) => ({ ...s, [key]: json }));
+    return save(api.put("/settings", { [key]: json }), "Header updated", [["settings"]]);
+  };
+  const labels = mode === "create" ? draftLabels : parseLabels(settings?.[keyFor(selectedId)]);
   const setLabel = (id: string, value: string) => {
     const next = { ...labels };
     if (value) next[id] = value;
     else delete next[id];
-    const json = JSON.stringify(next);
-    qc.setQueryData<Record<string, string>>(["settings"], (s) => ({ ...s, [labelsKey]: json }));
-    void save(api.put("/settings", { [labelsKey]: json }), "Header updated", [["settings"]]);
+    if (mode === "create") setDraftLabels(next);
+    else void persistLabels(keyFor(selectedId), next);
+  };
+  const changeMode = (next: typeof mode) => {
+    setDraftLabels({});
+    setMode(next);
+  };
+
+  // "Create new" previews an empty sheet so headers can be edited right away.
+  const today = new Date().toISOString();
+  const blank = { id: 0, buyerId: 0, buyer: { name: "" }, items: [] };
+  const previewInvoice: DocInvoice | undefined =
+    mode !== "create"
+      ? invoiceDoc
+      : isChalan
+        ? undefined
+        : {
+            type: "invoice",
+            company: company ?? null,
+            invoice: {
+              ...blank,
+              invNo: "",
+              invoiceDate: today,
+              subtotal: "0",
+              discount: "0",
+              taxTotal: "0",
+              total: "0",
+            },
+          };
+  const previewChalan: DocChalan | undefined =
+    mode !== "create"
+      ? chalanDoc
+      : isChalan
+        ? { type: "chalan", company: company ?? null, chalan: { ...blank, dcNo: "", date: today } }
+        : undefined;
+
+  const onSaved = (id: number) => {
+    if (mode === "create" && Object.keys(draftLabels).length)
+      void persistLabels(keyFor(id), draftLabels);
+    setDocId(id);
+    changeMode("browse");
   };
 
   return (
@@ -198,7 +241,7 @@ export function DocumentsScreen() {
                   onClick={() => {
                     setKind(k);
                     setDocId(null);
-                    setMode("browse");
+                    changeMode("browse");
                   }}
                 >
                   {k}
@@ -214,7 +257,7 @@ export function DocumentsScreen() {
               <Button
                 variant={mode !== "browse" ? "secondary" : "outline"}
                 size="sm"
-                onClick={() => setMode(mode !== "browse" ? "browse" : "create")}
+                onClick={() => changeMode(mode !== "browse" ? "browse" : "create")}
               >
                 <Plus className="size-4" /> {mode !== "browse" ? "Cancel" : "Create new"}
               </Button>
@@ -362,15 +405,11 @@ export function DocumentsScreen() {
           )}
         </div>
         <div className="bg-workspace p-4 sm:p-8">
-          {mode === "create" ? (
-            <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
-              Fill the form on the left — the new document will appear here.
-            </div>
-          ) : invoiceDoc ? (
+          {previewInvoice ? (
             <LabelContext.Provider value={{ labels, setLabel }}>
               <TradeInvoiceTemplate
                 title="PROFORMA INVOICE"
-                doc={invoiceDoc}
+                doc={previewInvoice}
                 notes={notes || settings?.["doc_proforma_notes"]}
                 brand={brand}
                 grossWeight={grossWeight}
@@ -379,9 +418,9 @@ export function DocumentsScreen() {
                 settings={settings}
               />
             </LabelContext.Provider>
-          ) : chalanDoc ? (
+          ) : previewChalan ? (
             <LabelContext.Provider value={{ labels, setLabel }}>
-              <ChalanTemplate doc={chalanDoc} />
+              <ChalanTemplate doc={previewChalan} />
             </LabelContext.Provider>
           ) : (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
