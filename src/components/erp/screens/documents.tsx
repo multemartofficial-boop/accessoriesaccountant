@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Printer, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -159,6 +160,21 @@ export function DocumentsScreen() {
   };
   const invoiceDoc = doc && !isChalan && "invoice" in doc ? doc : undefined;
   const chalanDoc = doc && isChalan && "chalan" in doc ? doc : undefined;
+
+  // Table header labels are overridable per document (double-click in the
+  // preview) and stored as JSON in the key-value settings table.
+  const qc = useQueryClient();
+  const save = useSave();
+  const labelsKey = `doc_headers_${isChalan ? "chalan" : "invoice"}_${selectedId}`;
+  const labels = parseLabels(settings?.[labelsKey]);
+  const setLabel = (id: string, value: string) => {
+    const next = { ...labels };
+    if (value) next[id] = value;
+    else delete next[id];
+    const json = JSON.stringify(next);
+    qc.setQueryData<Record<string, string>>(["settings"], (s) => ({ ...s, [labelsKey]: json }));
+    void save(api.put("/settings", { [labelsKey]: json }), "Header updated", [["settings"]]);
+  };
 
   return (
     <>
@@ -351,18 +367,22 @@ export function DocumentsScreen() {
               Fill the form on the left — the new document will appear here.
             </div>
           ) : invoiceDoc ? (
-            <TradeInvoiceTemplate
-              title="PROFORMA INVOICE"
-              doc={invoiceDoc}
-              notes={notes || settings?.["doc_proforma_notes"]}
-              brand={brand}
-              grossWeight={grossWeight}
-              currency="USD"
-              bank={bankAccount}
-              settings={settings}
-            />
+            <LabelContext.Provider value={{ labels, setLabel }}>
+              <TradeInvoiceTemplate
+                title="PROFORMA INVOICE"
+                doc={invoiceDoc}
+                notes={notes || settings?.["doc_proforma_notes"]}
+                brand={brand}
+                grossWeight={grossWeight}
+                currency="USD"
+                bank={bankAccount}
+                settings={settings}
+              />
+            </LabelContext.Provider>
           ) : chalanDoc ? (
-            <ChalanTemplate doc={chalanDoc} />
+            <LabelContext.Provider value={{ labels, setLabel }}>
+              <ChalanTemplate doc={chalanDoc} />
+            </LabelContext.Provider>
           ) : (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
               Select a document to preview.
@@ -371,6 +391,63 @@ export function DocumentsScreen() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ---------------------------- Editable header labels ---------------------------- */
+
+const LabelContext = createContext<{
+  labels: Record<string, string>;
+  setLabel?: (id: string, value: string) => void;
+}>({ labels: {} });
+
+function parseLabels(json?: string): Record<string, string> {
+  try {
+    return json ? (JSON.parse(json) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+// Double-click to edit; Enter saves (Shift+Enter = new line), Esc cancels,
+// clearing the text restores the default label.
+function EditableLabel({ id, children }: { id: string; children: string }) {
+  const { labels, setLabel } = useContext(LabelContext);
+  const value = labels[id] ?? children;
+  const [draft, setDraft] = useState<string | null>(null);
+
+  if (draft === null || !setLabel)
+    return (
+      <span
+        className={`whitespace-pre-line ${setLabel ? "cursor-text rounded-sm hover:bg-yellow-100 print:hover:bg-transparent" : ""}`}
+        title={setLabel ? "Double-click to edit" : undefined}
+        onDoubleClick={() => setLabel && setDraft(value)}
+      >
+        {value}
+      </span>
+    );
+
+  const commit = () => {
+    const next = draft.trim();
+    setDraft(null);
+    if (next !== value) setLabel(id, next === children ? "" : next);
+  };
+  return (
+    <textarea
+      autoFocus
+      value={draft}
+      rows={Math.max(1, draft.split("\n").length)}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") setDraft(null);
+      }}
+      className="w-full resize-none border border-blue-500 bg-white p-0 font-[inherit] [text-align:inherit] text-[inherit] leading-tight outline-none"
+    />
   );
 }
 
@@ -582,22 +659,22 @@ function TradeInvoiceTemplate({
           {/* Item header */}
           <tr className={`border-b-2 ${B}`}>
             <th className={`border-r ${B} w-10 px-1 py-1.5 text-center text-[11px] font-bold`}>
-              SL No.
+              <EditableLabel id="sl">SL No.</EditableLabel>
             </th>
             <th className={`border-r ${B} px-2 py-1.5 text-left text-[11px] font-bold`}>
-              Style Name
+              <EditableLabel id="style">Style Name</EditableLabel>
             </th>
             <th className={`border-r ${B} w-24 px-2 py-1.5 text-left text-[11px] font-bold`}>
-              Item name
+              <EditableLabel id="item">Item name</EditableLabel>
             </th>
             <th className={`border-r ${B} w-20 px-2 py-1.5 text-right text-[11px] font-bold`}>
-              Qty/Pcs
+              <EditableLabel id="qty">Qty/Pcs</EditableLabel>
             </th>
             <th className={`border-r ${B} w-24 px-2 py-1.5 text-right text-[11px] font-bold`}>
-              Rate per Dz ({sym})
+              <EditableLabel id="rate">{`Rate per Dz (${sym})`}</EditableLabel>
             </th>
             <th className={`w-28 px-2 py-1.5 text-right text-[11px] font-bold`}>
-              Amount in {cur}({sym})
+              <EditableLabel id="amount">{`Amount in ${cur}(${sym})`}</EditableLabel>
             </th>
           </tr>
         </thead>
@@ -793,27 +870,25 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
           {/* Column headers: "Item No" groups the quantity columns */}
           <tr>
             <th rowSpan={2} className={`${qtyCell} w-9 font-bold`}>
-              S.No.
+              <EditableLabel id="sno">S.No.</EditableLabel>
             </th>
             <th rowSpan={2} className="border border-black px-2 py-[3px] text-left font-bold">
-              Order No.
+              <EditableLabel id="order">Order No.</EditableLabel>
             </th>
             <th
               colSpan={extraQtyCols + 1}
               className="border border-black px-1 py-[2px] text-center font-bold"
             >
-              Item No
+              <EditableLabel id="itemNo">Item No</EditableLabel>
             </th>
           </tr>
           <tr>
             <th className={`${qtyCell} w-[11%] font-bold leading-tight`}>
-              STICKER
-              <br />
-              Qty. (Pcs.)
+              <EditableLabel id="qty0">{"STICKER\nQty. (Pcs.)"}</EditableLabel>
             </th>
             {Array.from({ length: extraQtyCols }).map((_, i) => (
               <th key={i} className={`${qtyCell} w-[11%] font-bold`}>
-                Qty. (Pcs.)
+                <EditableLabel id={`qty${i + 1}`}>Qty. (Pcs.)</EditableLabel>
               </th>
             ))}
           </tr>
