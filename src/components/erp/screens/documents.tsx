@@ -747,6 +747,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
   // complete when few items ship; longer lists simply overflow to page 2+.
   const filler = Math.max(0, 22 - ch.items.length);
   const qtyCell = "border border-black px-1 py-[3px] text-center align-middle";
+  const extraQtyCols = 5;
 
   return (
     <div
@@ -779,7 +780,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
                 <div>ERP NO: {ch.erpNo ?? ch.salesOrder?.soNo ?? ""}</div>
               </div>
             </td>
-            <td colSpan={4} className="border border-black p-2 align-top">
+            <td colSpan={extraQtyCols} className="border border-black p-2 align-top">
               <div className="text-[15px] font-bold uppercase">{c?.name ?? "Company Name"}</div>
               <div className="whitespace-pre-line leading-[1.35]">{c?.address ?? ""}</div>
               <div className="mt-2 text-[10px]">
@@ -789,7 +790,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
               </div>
             </td>
           </tr>
-          {/* Column headers: "Item No" groups the five quantity columns */}
+          {/* Column headers: "Item No" groups the quantity columns */}
           <tr>
             <th rowSpan={2} className={`${qtyCell} w-9 font-bold`}>
               S.No.
@@ -797,20 +798,24 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
             <th rowSpan={2} className="border border-black px-2 py-[3px] text-left font-bold">
               Order No.
             </th>
-            <th colSpan={5} className="border border-black px-1 py-[2px] text-center font-bold">
+            <th
+              colSpan={extraQtyCols + 1}
+              className="border border-black px-1 py-[2px] text-center font-bold"
+            >
               Item No
             </th>
           </tr>
           <tr>
-            <th className={`${qtyCell} w-[12.5%] font-bold leading-tight`}>
+            <th className={`${qtyCell} w-[11%] font-bold leading-tight`}>
               STICKER
               <br />
               Qty. (Pcs.)
             </th>
-            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
-            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
-            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
-            <th className={`${qtyCell} w-[12.5%] font-bold`}>Qty. (Pcs.)</th>
+            {Array.from({ length: extraQtyCols }).map((_, i) => (
+              <th key={i} className={`${qtyCell} w-[11%] font-bold`}>
+                Qty. (Pcs.)
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -819,10 +824,9 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
               <td className={qtyCell}>{i + 1}</td>
               <td className="border border-black px-2 py-[3px] uppercase">{item.product.name}</td>
               <td className={qtyCell}>{num(item.quantity)}</td>
-              <td className={qtyCell} />
-              <td className={qtyCell} />
-              <td className={qtyCell} />
-              <td className={qtyCell} />
+              {Array.from({ length: extraQtyCols }).map((_, j) => (
+                <td key={j} className={qtyCell} />
+              ))}
             </tr>
           ))}
           {Array.from({ length: filler }).map((_, i) => (
@@ -830,9 +834,9 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
               <td className={qtyCell}>&nbsp;</td>
               <td className="border border-black px-2 py-[3px]" />
               <td className={qtyCell} />
-              <td className={qtyCell} />
-              <td className={qtyCell} />
-              <td className={qtyCell} />
+              {Array.from({ length: extraQtyCols }).map((_, j) => (
+                <td key={j} className={qtyCell} />
+              ))}
             </tr>
           ))}
           {/* Totals */}
@@ -841,10 +845,11 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
               Total Qty (Pcs.)= {total.toLocaleString()} pcs
             </td>
             <td className={`${qtyCell} font-bold`}>{total} PCS</td>
-            <td className={`${qtyCell} font-bold`}>00 PCS</td>
-            <td className={`${qtyCell} font-bold`}>00 PCS</td>
-            <td className={`${qtyCell} font-bold`}>00 PCS</td>
-            <td className={`${qtyCell} font-bold`}>00 PCS</td>
+            {Array.from({ length: extraQtyCols }).map((_, j) => (
+              <td key={j} className={`${qtyCell} font-bold`}>
+                00 PCS
+              </td>
+            ))}
           </tr>
           {/* Bottom band */}
           <tr>
@@ -864,7 +869,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
                 it is not considerable.
               </div>
             </td>
-            <td colSpan={3} className="border border-black p-2 align-bottom">
+            <td colSpan={extraQtyCols - 1} className="border border-black p-2 align-bottom">
               <div className="pb-1 text-center">
                 <div className="text-[11px] font-semibold italic">{c?.name ?? "Company"}</div>
                 <div className="text-[10px] italic">Authorized Signatory</div>

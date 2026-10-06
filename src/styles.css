@@ -236,6 +236,21 @@
     background: #fff !important;
   }
 
+  /* Keep ruled table lines on paper: don't let the browser's economy mode or
+     unresolved Tailwind border variables drop cell borders when printing. */
+  #print-document,
+  #print-document * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #print-document table,
+  #print-document tr,
+  #print-document th,
+  #print-document td {
+    border-style: solid !important;
+    border-color: #000 !important;
+  }
+
   /* Repeat table headers on every page and keep each row on one page. */
   #print-document thead { display: table-header-group; }
   #print-document tfoot { display: table-footer-group; }
