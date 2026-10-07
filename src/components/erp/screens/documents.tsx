@@ -1,6 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, Fragment, useContext, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Printer, Save } from "lucide-react";
+import { Pencil, Plus, Printer, RotateCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, PageHeader } from "../ui";
@@ -172,13 +172,17 @@ export function DocumentsScreen() {
     return save(api.put("/settings", { [key]: json }), "Header updated", [["settings"]]);
   };
   const labels = mode === "create" ? draftLabels : parseLabels(settings?.[keyFor(selectedId)]);
-  const setLabel = (id: string, value: string) => {
-    const next = { ...labels };
-    if (value) next[id] = value;
-    else delete next[id];
+  const writeLabels = (next: Record<string, string>) => {
     if (mode === "create") setDraftLabels(next);
     else void persistLabels(keyFor(selectedId), next);
   };
+  const setLabel = (id: string, value: string | null) => {
+    const next = { ...labels };
+    if (value === null) delete next[id];
+    else next[id] = value;
+    writeLabels(next);
+  };
+  const hasEdits = Object.keys(labels).length > 0;
   const changeMode = (next: typeof mode) => {
     setDraftLabels({});
     setMode(next);
@@ -249,6 +253,16 @@ export function DocumentsScreen() {
               ))}
             </div>
             <div className="flex gap-2">
+              {hasEdits && (previewInvoice || previewChalan) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Restore the original text in every edited cell"
+                  onClick={() => writeLabels({})}
+                >
+                  <RotateCcw className="size-4" /> Reset edits
+                </Button>
+              )}
               {mode === "browse" && doc && (
                 <Button variant="outline" size="sm" onClick={() => setMode("edit")}>
                   <Pencil className="size-4" /> Edit
@@ -315,7 +329,7 @@ export function DocumentsScreen() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{invoiceDoc.invoice.salesOrder?.soNo ?? "—"}</span>
+                    <span>{invoiceDoc.invoice.salesOrder?.soNo ?? "â€”"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
@@ -339,11 +353,11 @@ export function DocumentsScreen() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{chalanDoc.chalan.salesOrder?.soNo ?? "—"}</span>
+                    <span>{chalanDoc.chalan.salesOrder?.soNo ?? "â€”"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Vehicle</span>
-                    <span>{chalanDoc.chalan.vehicleNo ?? "—"}</span>
+                    <span>{chalanDoc.chalan.vehicleNo ?? "â€”"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
@@ -354,7 +368,7 @@ export function DocumentsScreen() {
               {!isChalan && (
                 <div className="mt-4 grid gap-3">
                   <Field
-                    label="Buyer (brand) — printed as “Buyer. :”"
+                    label="Buyer (brand) â€” printed as â€œBuyer. :â€"
                     value={brand}
                     onChange={setBrand}
                     placeholder={invoiceDoc?.invoice.brand ?? "e.g. LAHALLE"}
@@ -376,7 +390,7 @@ export function DocumentsScreen() {
                       {bankOptions.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.bankName || a.name}
-                          {a.accountNo ? ` · ${a.accountNo}` : ""}
+                          {a.accountNo ? ` Â· ${a.accountNo}` : ""}
                         </option>
                       ))}
                     </select>
@@ -398,7 +412,7 @@ export function DocumentsScreen() {
                 />
               </label>
               <p className="mt-3 text-[11px] text-muted-foreground">
-                Company name, logo, address and document text are managed in Settings → Company
+                Company name, logo, address and document text are managed in Settings â†’ Company
                 profile / Document templates.
               </p>
             </div>
@@ -437,7 +451,7 @@ export function DocumentsScreen() {
 
 const LabelContext = createContext<{
   labels: Record<string, string>;
-  setLabel?: (id: string, value: string) => void;
+  setLabel?: (id: string, value: string | null) => void;
 }>({ labels: {} });
 
 function parseLabels(json?: string): Record<string, string> {
@@ -448,9 +462,18 @@ function parseLabels(json?: string): Record<string, string> {
   }
 }
 
-// Double-click to edit; Enter saves (Shift+Enter = new line), Esc cancels,
-// clearing the text restores the default label.
-function EditableLabel({ id, children }: { id: string; children: string }) {
+// Double-click to edit; Enter saves (Shift+Enter = new line), Esc cancels.
+// An emptied cell stays blank; "Reset edits" restores the original text.
+// `block` makes the editable area fill its table cell (needed for empty cells).
+function EditableLabel({
+  id,
+  children = "",
+  block,
+}: {
+  id: string;
+  children?: string;
+  block?: boolean;
+}) {
   const { labels, setLabel } = useContext(LabelContext);
   const value = labels[id] ?? children;
   const [draft, setDraft] = useState<string | null>(null);
@@ -458,18 +481,18 @@ function EditableLabel({ id, children }: { id: string; children: string }) {
   if (draft === null || !setLabel)
     return (
       <span
-        className={`whitespace-pre-line ${setLabel ? "cursor-text rounded-sm hover:bg-yellow-100 print:hover:bg-transparent" : ""}`}
+        className={`whitespace-pre-line ${block ? "block" : value ? "" : "inline-block min-w-[3em]"} ${setLabel ? "cursor-text rounded-sm hover:bg-yellow-100 print:hover:bg-transparent" : ""}`}
         title={setLabel ? "Double-click to edit" : undefined}
         onDoubleClick={() => setLabel && setDraft(value)}
       >
-        {value}
+        {value || "\u00a0"}
       </span>
     );
 
   const commit = () => {
     const next = draft.trim();
     setDraft(null);
-    if (next !== value) setLabel(id, next === children ? "" : next);
+    if (next !== value) setLabel(id, next === children ? null : next);
   };
   return (
     <textarea
@@ -485,14 +508,16 @@ function EditableLabel({ id, children }: { id: string; children: string }) {
           commit();
         } else if (e.key === "Escape") setDraft(null);
       }}
-      className="w-full resize-none border border-blue-500 bg-white p-0 font-[inherit] [text-align:inherit] text-[inherit] leading-tight outline-none"
+      className="w-full min-w-[4em] resize-none border border-blue-500 bg-white p-0 font-[inherit] [text-align:inherit] text-[inherit] leading-tight outline-none"
     />
   );
 }
 
+const E = EditableLabel;
+
 /* ---------------------------- Sales invoice / proforma (bordered trade template) ---------------------------- */
 
-const CURRENCY_SYMBOL: Record<string, string> = { BDT: "৳", USD: "$", EUR: "€" };
+const CURRENCY_SYMBOL: Record<string, string> = { BDT: "à§³", USD: "$", EUR: "â‚¬" };
 
 const CURRENCY_MINOR: Record<string, string> = { BDT: "PAISA", USD: "CENT", EUR: "CENT" };
 
@@ -601,7 +626,7 @@ function TradeInvoiceTemplate({
   const brandText = brand || inv.brand || "";
   const weightText = grossWeight || inv.grossWeight || "";
   // Items are priced per piece in the ERP but quoted per dozen on trade
-  // documents — rate per dz = unit rate x 12 (PCS units only).
+  // documents â€” rate per dz = unit rate x 12 (PCS units only).
   const ratePerDz = (item: DocInvoice["invoice"]["items"][number]) =>
     item.product.unit?.code === "PCS" ? num(item.rate) * 12 : num(item.rate);
 
@@ -643,22 +668,28 @@ function TradeInvoiceTemplate({
                     <img src={c.logoUrl} alt="logo" className="max-h-16 object-contain" />
                   ) : (
                     <div className="text-center text-base font-bold uppercase leading-5">
-                      {c?.name ?? "Company"}
+                      <E id="c.logoText">{c?.name ?? "Company"}</E>
                     </div>
                   )}
                 </div>
                 <div className="flex-1 px-2 py-2 text-center">
                   <div className="text-[26px] font-bold uppercase leading-8 tracking-wide">
-                    {c?.name ?? "Company Name"}
+                    <E id="c.name">{c?.name ?? "Company Name"}</E>
                   </div>
                   <div className="mt-0.5 whitespace-pre-line text-[10px] leading-4">
-                    {c?.address}
-                    {c?.phone ? `${c?.address ? "  " : ""}PH:- ${c.phone}` : ""}
+                    <E id="c.address">
+                      {`${c?.address ?? ""}${c?.phone ? `${c?.address ? "  " : ""}PH:- ${c.phone}` : ""}`}
+                    </E>
                   </div>
                   <div className="mt-0.5 text-[11px] font-semibold">
-                    {c?.tradeLicenseNo ? `TIN NO: ${c.tradeLicenseNo}` : ""}
-                    {c?.tradeLicenseNo && c?.vatRegNo ? ", " : ""}
-                    {c?.vatRegNo ? `BIN : ${c.vatRegNo}` : ""}
+                    <E id="c.tax">
+                      {[
+                        c?.tradeLicenseNo ? `TIN NO: ${c.tradeLicenseNo}` : "",
+                        c?.vatRegNo ? `BIN : ${c.vatRegNo}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </E>
                   </div>
                 </div>
               </div>
@@ -670,29 +701,35 @@ function TradeInvoiceTemplate({
               colSpan={4}
               className={`border-b-2 ${B} px-2 py-1.5 text-[15px] font-bold tracking-wide`}
             >
-              {title}
+              <E id="title">{title}</E>
             </td>
             <td
               colSpan={2}
               className={`border-b-2 ${B} px-2 py-1.5 text-right text-[13px] font-bold`}
             >
-              Date: {ddmmyy(inv.invoiceDate)}
+              <E id="date">{`Date: ${ddmmyy(inv.invoiceDate)}`}</E>
             </td>
           </tr>
           {/* Consignee + invoice no */}
           <tr>
             <td colSpan={4} className={`border-b-2 ${B} p-2 align-top`}>
-              <div>To :</div>
-              <div className="mt-1 text-[13px] font-bold uppercase">{inv.buyer.name}</div>
+              <div>
+                <E id="to">To :</E>
+              </div>
+              <div className="mt-1 text-[13px] font-bold uppercase">
+                <E id="buyer.name">{inv.buyer.name}</E>
+              </div>
               <div className="mt-0.5 whitespace-pre-line text-[11px] leading-4">
-                {inv.buyer.address}
+                <E id="buyer.address">{inv.buyer.address ?? ""}</E>
               </div>
               <div className="mt-3 text-[12px] font-semibold">
-                Buyer. :{brandText.toUpperCase()}
+                <E id="brand">{`Buyer. :${brandText.toUpperCase()}`}</E>
               </div>
             </td>
             <td colSpan={2} className={`border-b-2 border-l-2 ${B} p-2 align-top`}>
-              <div className="text-[13px] font-bold">Invoice No : {inv.invNo}</div>
+              <div className="text-[13px] font-bold">
+                <E id="invNo">{`Invoice No : ${inv.invNo}`}</E>
+              </div>
             </td>
           </tr>
           {/* Item header */}
@@ -720,80 +757,127 @@ function TradeInvoiceTemplate({
         <tbody>
           {inv.items.map((item, i) => (
             <tr key={i} className={`border-b ${B} align-top`}>
-              <td className={`border-r ${B} px-1 py-1 text-center`}>{i + 1}.</td>
+              <td className={`border-r ${B} px-1 py-1 text-center`}>
+                <E id={`r${i}.sl`} block>{`${i + 1}.`}</E>
+              </td>
               <td className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 leading-4`}>
-                {item.product.sku || item.product.name}
+                <E id={`r${i}.style`} block>
+                  {item.product.sku || item.product.name}
+                </E>
               </td>
               <td
                 className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 font-semibold leading-4`}
               >
-                {item.product.name}
+                <E id={`r${i}.item`} block>
+                  {item.product.name}
+                </E>
               </td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
-                {num(item.quantity)}
+                <E id={`r${i}.qty`} block>
+                  {String(num(item.quantity))}
+                </E>
               </td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
-                {sym} {ratePerDz(item).toFixed(2)}
+                <E id={`r${i}.rate`} block>{`${sym} ${ratePerDz(item).toFixed(2)}`}</E>
               </td>
-              <td className="px-2 py-1 text-right tabular-nums">{fx(item.total)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">
+                <E id={`r${i}.amount`} block>
+                  {fx(item.total)}
+                </E>
+              </td>
             </tr>
           ))}
           {Array.from({ length: filler }).map((_, i) => (
             <tr key={`f-${i}`} className={`border-b ${B}`}>
-              <td className={`border-r ${B} px-1 py-1`}>&nbsp;</td>
-              <td className={`border-r ${B}`} />
-              <td className={`border-r ${B}`} />
-              <td className={`border-r ${B}`} />
-              <td className={`border-r ${B}`} />
-              <td />
+              <td className={`border-r ${B} px-1 py-1 text-center`}>
+                <E id={`f${i}.sl`} block />
+              </td>
+              <td className={`border-r ${B} px-2 py-1`}>
+                <E id={`f${i}.style`} block />
+              </td>
+              <td className={`border-r ${B} px-2 py-1 font-semibold`}>
+                <E id={`f${i}.item`} block />
+              </td>
+              <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
+                <E id={`f${i}.qty`} block />
+              </td>
+              <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
+                <E id={`f${i}.rate`} block />
+              </td>
+              <td className="px-2 py-1 text-right tabular-nums">
+                <E id={`f${i}.amount`} block />
+              </td>
             </tr>
           ))}
           {/* Totals strip */}
           <tr className={`border-b ${B}`}>
             <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
-              Total Items {"—".repeat(5) + ">"}
+              <E id="totalItems.label">{`Total Items ${"â€”".repeat(5)}>`}</E>
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold tabular-nums`}>
-              {totalQty}
+              <E id="totalItems.qty" block>
+                {String(totalQty)}
+              </E>
             </td>
-            <td className={`border-r ${B}`} />
-            <td />
+            <td className={`border-r ${B} px-2 py-1.5 text-right font-bold`}>
+              <E id="totalItems.rate" block />
+            </td>
+            <td className="px-2 py-1.5 text-right font-bold">
+              <E id="totalItems.amount" block />
+            </td>
           </tr>
           <tr className={`border-b-2 ${B}`}>
             <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
-              GROSS WEIGHT {"—".repeat(5) + ">"}
+              <E id="gross.label">{`GROSS WEIGHT ${"â€”".repeat(5)}>`}</E>
             </td>
             <td colSpan={3} className="px-2 py-1.5 font-semibold">
-              {weightText}
+              <E id="gross.value" block>
+                {weightText}
+              </E>
             </td>
           </tr>
           {/* Bottom: amount-in-words / bank / notes | totals */}
           <tr>
             <td colSpan={4} className="p-2 align-top">
               <div className="text-[11px] font-bold">
-                AMOUNT&nbsp;&nbsp;{amountInWords(grand, cur)}.
+                <E id="amountWords">{`AMOUNT\u00a0\u00a0${amountInWords(grand, cur)}.`}</E>
               </div>
-              <div className="mt-1 text-[10px] font-semibold">ALL PRICES IN {cur}</div>
+              <div className="mt-1 text-[10px] font-semibold">
+                <E id="allPrices">{`ALL PRICES IN ${cur}`}</E>
+              </div>
               <div className="mt-2 grid grid-cols-[110px_1fr] gap-y-0.5 text-[11px]">
-                <span>Bank Details :</span>
-                <span className="font-semibold">{bankName}</span>
-                <span>Account Holder</span>
-                <span className="font-semibold">{holder}</span>
-                <span>A/C No.</span>
-                <span>{acNo}</span>
-                <span>Swift No.</span>
-                <span>{swift}</span>
-                <span>Routing No.</span>
-                <span>{routing}</span>
-                <span className="align-top">Bank Address</span>
-                <span className="whitespace-pre-line">{bankAddr}</span>
+                {(
+                  [
+                    ["Bank Details :", bankName, true],
+                    ["Account Holder", holder, true],
+                    ["A/C No.", acNo, false],
+                    ["Swift No.", swift, false],
+                    ["Routing No.", routing, false],
+                    ["Bank Address", bankAddr, false],
+                  ] as const
+                ).map(([label, value, bold], i) => (
+                  <Fragment key={i}>
+                    <span className="align-top">
+                      <E id={`bank.l${i}`}>{label}</E>
+                    </span>
+                    <span className={bold ? "font-semibold" : ""}>
+                      <E id={`bank.v${i}`} block>
+                        {value}
+                      </E>
+                    </span>
+                  </Fragment>
+                ))}
               </div>
               {noteLines.length > 0 && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold">Notes:-</div>
+                  <div className="text-[10px] font-semibold">
+                    <E id="notes.title">Notes:-</E>
+                  </div>
                   <ol className="mt-0.5 list-decimal pl-4 text-[9.5px] leading-4">
                     {noteLines.map((l, i) => (
-                      <li key={i}>{l}</li>
+                      <li key={i}>
+                        <E id={`notes.${i}`}>{l}</E>
+                      </li>
                     ))}
                   </ol>
                 </div>
@@ -802,40 +886,37 @@ function TradeInvoiceTemplate({
             <td colSpan={2} className={`border-l-2 ${B} p-0 align-top`}>
               <table className="w-full border-collapse text-[11px]">
                 <tbody>
-                  <tr>
-                    <td className="px-2 py-1 text-right font-semibold">Sub Total</td>
-                    <td className={`border ${B} w-24 px-2 py-1 text-right tabular-nums`}>
-                      {fx(subtotal)}
-                    </td>
-                  </tr>
-                  {tax > 0 && (
-                    <tr>
-                      <td className="px-2 py-1 text-right font-semibold">VAT</td>
-                      <td className={`border ${B} px-2 py-1 text-right tabular-nums`}>{fx(tax)}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td className="px-2 py-1 text-right font-semibold">Total</td>
-                    <td className={`border ${B} px-2 py-1 text-right tabular-nums`}>
-                      {fx(subtotal + tax)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-2 py-1 text-right font-semibold">Less</td>
-                    <td className={`border ${B} px-2 py-1 text-right tabular-nums`}>
-                      {less ? fx(less) : "0.00"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-2 py-1 text-right font-bold">Grand Total :</td>
-                    <td className={`border ${B} px-2 py-1 text-right font-bold tabular-nums`}>
-                      {fx(grand)}
-                    </td>
-                  </tr>
+                  {(
+                    [
+                      ["sub", "Sub Total", fx(subtotal), true],
+                      ["vat", "VAT", fx(tax), tax > 0],
+                      ["total", "Total", fx(subtotal + tax), true],
+                      ["less", "Less", less ? fx(less) : "0.00", true],
+                      ["grand", "Grand Total :", fx(grand), true],
+                    ] as const
+                  )
+                    .filter((r) => r[3])
+                    .map(([key, label, value]) => {
+                      const weight = key === "grand" ? "font-bold" : "font-semibold";
+                      return (
+                        <tr key={key}>
+                          <td className={`px-2 py-1 text-right ${weight}`}>
+                            <E id={`${key}.label`}>{label}</E>
+                          </td>
+                          <td
+                            className={`border ${B} w-24 px-2 py-1 text-right tabular-nums ${key === "grand" ? "font-bold" : ""}`}
+                          >
+                            <E id={`${key}.value`} block>
+                              {value}
+                            </E>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
               <div className="mt-8 px-2 text-right text-[11px] font-semibold italic">
-                For {c?.name ?? "Company"}
+                <E id="forCompany">{`For ${c?.name ?? "Company"}`}</E>
               </div>
             </td>
           </tr>
@@ -843,9 +924,11 @@ function TradeInvoiceTemplate({
           <tr>
             <td colSpan={6} className={`border-t-2 ${B} px-3 pb-2 pt-8`}>
               <div className="flex justify-between text-[11px] font-semibold">
-                <span>Merchandiser</span>
-                <span>Accounts</span>
-                <span>Auth. Sign.</span>
+                {["Merchandiser", "Accounts", "Auth. Sign."].map((s, i) => (
+                  <span key={i}>
+                    <E id={`sign.${i}`}>{s}</E>
+                  </span>
+                ))}
               </div>
             </td>
           </tr>
@@ -871,13 +954,17 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
       className="mx-auto max-w-[210mm] bg-white p-4 text-black shadow-print"
       style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      {/* Top bar — outside the bordered form */}
+      {/* Top bar â€” outside the bordered form */}
       <div className="mb-1 flex items-baseline justify-between text-[13px]">
-        <div className="w-1/3">Date : {ddmmyy(ch.date)}</div>
-        <div className="w-1/3 text-center text-[16px] font-bold tracking-[0.18em]">
-          DELIVERY CHALLAN
+        <div className="w-1/3">
+          <E id="date">{`Date : ${ddmmyy(ch.date)}`}</E>
         </div>
-        <div className="w-1/3 text-right">Challan No : {ch.dcNo}</div>
+        <div className="w-1/3 text-center text-[16px] font-bold tracking-[0.18em]">
+          <E id="title">DELIVERY CHALLAN</E>
+        </div>
+        <div className="w-1/3 text-right">
+          <E id="dcNo">{`Challan No : ${ch.dcNo}`}</E>
+        </div>
       </div>
 
       <table className="w-full border-collapse border border-black text-[11px]">
@@ -885,24 +972,44 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
           {/* To / supplier block */}
           <tr>
             <td colSpan={3} className="border border-black p-2 align-top">
-              <div>To :</div>
-              <div className="mt-0.5 text-[15px] font-bold uppercase">{ch.buyer.name}</div>
+              <div>
+                <E id="to">To :</E>
+              </div>
+              <div className="mt-0.5 text-[15px] font-bold uppercase">
+                <E id="buyer.name">{ch.buyer.name}</E>
+              </div>
               <div className="whitespace-pre-line uppercase leading-[1.35]">
-                {ch.buyer.address ?? ""}
+                <E id="buyer.address">{ch.buyer.address ?? ""}</E>
               </div>
               <div className="mt-2 text-[10px]">
-                <div>Cell : {ch.buyer.phone ?? ""}</div>
-                <div>Style : {ch.styleNo ?? ""}</div>
-                <div>ERP NO: {ch.erpNo ?? ch.salesOrder?.soNo ?? ""}</div>
+                <div>
+                  <E id="buyer.cell">{`Cell : ${ch.buyer.phone ?? ""}`}</E>
+                </div>
+                <div>
+                  <E id="style">{`Style : ${ch.styleNo ?? ""}`}</E>
+                </div>
+                <div>
+                  <E id="erp">{`ERP NO: ${ch.erpNo ?? ch.salesOrder?.soNo ?? ""}`}</E>
+                </div>
               </div>
             </td>
             <td colSpan={extraQtyCols} className="border border-black p-2 align-top">
-              <div className="text-[15px] font-bold uppercase">{c?.name ?? "Company Name"}</div>
-              <div className="whitespace-pre-line leading-[1.35]">{c?.address ?? ""}</div>
+              <div className="text-[15px] font-bold uppercase">
+                <E id="c.name">{c?.name ?? "Company Name"}</E>
+              </div>
+              <div className="whitespace-pre-line leading-[1.35]">
+                <E id="c.address">{c?.address ?? ""}</E>
+              </div>
               <div className="mt-2 text-[10px]">
-                <div>Cell : {c?.phone ?? ""}</div>
-                <div>TIN NO : {c?.tradeLicenseNo ?? ""}</div>
-                <div>BIN : {c?.vatRegNo ?? ""}</div>
+                <div>
+                  <E id="c.cell">{`Cell : ${c?.phone ?? ""}`}</E>
+                </div>
+                <div>
+                  <E id="c.tin">{`TIN NO : ${c?.tradeLicenseNo ?? ""}`}</E>
+                </div>
+                <div>
+                  <E id="c.bin">{`BIN : ${c?.vatRegNo ?? ""}`}</E>
+                </div>
               </div>
             </td>
           </tr>
@@ -935,58 +1042,86 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
         <tbody>
           {ch.items.map((item, i) => (
             <tr key={i}>
-              <td className={qtyCell}>{i + 1}</td>
-              <td className="border border-black px-2 py-[3px] uppercase">{item.product.name}</td>
-              <td className={qtyCell}>{num(item.quantity)}</td>
+              <td className={qtyCell}>
+                <E id={`r${i}.sno`} block>
+                  {String(i + 1)}
+                </E>
+              </td>
+              <td className="border border-black px-2 py-[3px] uppercase">
+                <E id={`r${i}.name`} block>
+                  {item.product.name}
+                </E>
+              </td>
+              <td className={qtyCell}>
+                <E id={`r${i}.q0`} block>
+                  {String(num(item.quantity))}
+                </E>
+              </td>
               {Array.from({ length: extraQtyCols }).map((_, j) => (
-                <td key={j} className={qtyCell} />
+                <td key={j} className={qtyCell}>
+                  <E id={`r${i}.q${j + 1}`} block />
+                </td>
               ))}
             </tr>
           ))}
           {Array.from({ length: filler }).map((_, i) => (
             <tr key={`f-${i}`}>
-              <td className={qtyCell}>&nbsp;</td>
-              <td className="border border-black px-2 py-[3px]" />
-              <td className={qtyCell} />
-              {Array.from({ length: extraQtyCols }).map((_, j) => (
-                <td key={j} className={qtyCell} />
+              <td className={qtyCell}>
+                <E id={`f${i}.sno`} block />
+              </td>
+              <td className="border border-black px-2 py-[3px] uppercase">
+                <E id={`f${i}.name`} block />
+              </td>
+              {Array.from({ length: extraQtyCols + 1 }).map((_, j) => (
+                <td key={j} className={qtyCell}>
+                  <E id={`f${i}.q${j}`} block />
+                </td>
               ))}
             </tr>
           ))}
           {/* Totals */}
           <tr>
             <td colSpan={2} className="border border-black px-2 py-[4px] font-bold">
-              Total Qty (Pcs.)= {total.toLocaleString()} pcs
+              <E id="total.label">{`Total Qty (Pcs.)= ${total.toLocaleString()} pcs`}</E>
             </td>
-            <td className={`${qtyCell} font-bold`}>{total} PCS</td>
+            <td className={`${qtyCell} font-bold`}>
+              <E id="total.q0" block>{`${total} PCS`}</E>
+            </td>
             {Array.from({ length: extraQtyCols }).map((_, j) => (
               <td key={j} className={`${qtyCell} font-bold`}>
-                00 PCS
+                <E id={`total.q${j + 1}`} block>
+                  00 PCS
+                </E>
               </td>
             ))}
           </tr>
           {/* Bottom band */}
           <tr>
             <td colSpan={2} className="border border-black p-2 align-top">
-              <div className="text-[10px] font-semibold">RECEIVER SIGN :</div>
-              <div className="mt-10 text-[10px]">Name:</div>
+              <div className="text-[10px] font-semibold">
+                <E id="receiver">RECEIVER SIGN :</E>
+              </div>
+              <div className="mt-10 text-[10px]">
+                <E id="receiver.name">Name:</E>
+              </div>
             </td>
             <td colSpan={2} className="border border-black p-2 align-top">
               <div className="text-[9.5px] italic leading-[1.45]">
-                Note for any shortage kindly
-                <br />
-                intimate us within three days.
-                <br />
-                <br />
-                After receiving goods. After that
-                <br />
-                it is not considerable.
+                <E id="note">
+                  {
+                    "Note for any shortage kindly\nintimate us within three days.\n\nAfter receiving goods. After that\nit is not considerable."
+                  }
+                </E>
               </div>
             </td>
             <td colSpan={extraQtyCols - 1} className="border border-black p-2 align-bottom">
               <div className="pb-1 text-center">
-                <div className="text-[11px] font-semibold italic">{c?.name ?? "Company"}</div>
-                <div className="text-[10px] italic">Authorized Signatory</div>
+                <div className="text-[11px] font-semibold italic">
+                  <E id="c.sign">{c?.name ?? "Company"}</E>
+                </div>
+                <div className="text-[10px] italic">
+                  <E id="sign">Authorized Signatory</E>
+                </div>
               </div>
             </td>
           </tr>
@@ -1000,7 +1135,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
 
 const isoDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
-// Only the queries a document save actually changes — not the whole cache.
+// Only the queries a document save actually changes â€” not the whole cache.
 const DOC_KEYS: unknown[][] = [["doc-sources"], ["document"], ["products"], ["sales-orders"]];
 
 function InvoiceForm({
@@ -1125,7 +1260,7 @@ function InvoiceForm({
               <option value="">None</option>
               {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.soNo} · {o.buyer.name}
+                  {o.soNo} Â· {o.buyer.name}
                 </option>
               ))}
             </select>
@@ -1185,7 +1320,7 @@ function InvoiceForm({
       </div>
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
-          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create proforma invoice"}
+          <Save /> {saving ? "Savingâ€¦" : existing ? "Save changes" : "Create proforma invoice"}
         </Button>
       </div>
     </form>
@@ -1282,7 +1417,7 @@ function ChalanForm({
               <option value="">None</option>
               {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.soNo} · {o.buyer.name}
+                  {o.soNo} Â· {o.buyer.name}
                 </option>
               ))}
             </select>
@@ -1320,7 +1455,7 @@ function ChalanForm({
       />
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
-          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create chalan"}
+          <Save /> {saving ? "Savingâ€¦" : existing ? "Save changes" : "Create chalan"}
         </Button>
       </div>
     </form>
