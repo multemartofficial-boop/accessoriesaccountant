@@ -1011,6 +1011,11 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
     );
   });
   const total = colTotals[0]!;
+  // Sum of every column's total as shown (a hand-edited total cell counts as typed).
+  const grandTotal = colTotals.reduce(
+    (s, n, j) => s + (`total.q${j}` in labels ? parseNum(labels[`total.q${j}`]) : n),
+    0,
+  );
 
   return (
     <div
@@ -1146,7 +1151,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
           {/* Totals */}
           <tr>
             <td colSpan={2} className="border border-black px-2 py-[4px] font-bold">
-              <E id="total.label">{`Total Qty (Pcs.)= ${total.toLocaleString()} pcs`}</E>
+              <E id="total.label">{`Total Qty (Pcs.)= ${grandTotal.toLocaleString()} pcs`}</E>
             </td>
             <td className={`${qtyCell} font-bold`}>
               <E id="total.q0" block>{`${trimNum(total)} PCS`}</E>
