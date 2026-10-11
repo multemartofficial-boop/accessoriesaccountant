@@ -157,6 +157,18 @@ export function DocumentsScreen() {
   const invoiceDoc = doc && !isChalan && "invoice" in doc ? doc : undefined;
   const chalanDoc = doc && isChalan && "chalan" in doc ? doc : undefined;
 
+  // Load the selected invoice's saved brand / gross weight into the composer
+  // fields (again whenever another invoice is picked or the saved values change).
+  const savedInv = invoiceDoc?.invoice;
+  const savedKey =
+    savedInv && `${savedInv.id}|${savedInv.brand ?? ""}|${savedInv.grossWeight ?? ""}`;
+  const [loadedKey, setLoadedKey] = useState<string>();
+  if (savedInv && savedKey !== loadedKey) {
+    setLoadedKey(savedKey);
+    setBrand(savedInv.brand ?? "");
+    setGrossWeight(savedInv.grossWeight ?? "");
+  }
+
   // Table header labels are overridable per document (double-click in the
   // preview) and stored as JSON in the key-value settings table. While a new
   // document is being created they live in local state and are saved under
@@ -329,7 +341,7 @@ export function DocumentsScreen() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{invoiceDoc.invoice.salesOrder?.soNo ?? "â€”"}</span>
+                    <span>{invoiceDoc.invoice.salesOrder?.soNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
@@ -353,11 +365,11 @@ export function DocumentsScreen() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Order</span>
-                    <span>{chalanDoc.chalan.salesOrder?.soNo ?? "â€”"}</span>
+                    <span>{chalanDoc.chalan.salesOrder?.soNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Vehicle</span>
-                    <span>{chalanDoc.chalan.vehicleNo ?? "â€”"}</span>
+                    <span>{chalanDoc.chalan.vehicleNo ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Lines</span>
@@ -368,16 +380,16 @@ export function DocumentsScreen() {
               {!isChalan && (
                 <div className="mt-4 grid gap-3">
                   <Field
-                    label="Buyer (brand) â€” printed as â€œBuyer. :â€"
+                    label="Buyer (brand) — printed as “Buyer. :”"
                     value={brand}
                     onChange={setBrand}
-                    placeholder={invoiceDoc?.invoice.brand ?? "e.g. LAHALLE"}
+                    placeholder="e.g. LAHALLE"
                   />
                   <Field
                     label="Gross weight"
                     value={grossWeight}
                     onChange={setGrossWeight}
-                    placeholder={invoiceDoc?.invoice.grossWeight ?? "e.g. 14 KG"}
+                    placeholder="e.g. 14 KG"
                   />
                   <label className="grid gap-1.5 text-xs font-semibold">
                     <span>Bank account (printed in Bank Details)</span>
@@ -390,7 +402,7 @@ export function DocumentsScreen() {
                       {bankOptions.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.bankName || a.name}
-                          {a.accountNo ? ` Â· ${a.accountNo}` : ""}
+                          {a.accountNo ? ` · ${a.accountNo}` : ""}
                         </option>
                       ))}
                     </select>
@@ -412,7 +424,7 @@ export function DocumentsScreen() {
                 />
               </label>
               <p className="mt-3 text-[11px] text-muted-foreground">
-                Company name, logo, address and document text are managed in Settings â†’ Company
+                Company name, logo, address and document text are managed in Settings → Company
                 profile / Document templates.
               </p>
             </div>
@@ -524,7 +536,7 @@ const trimNum = (n: number) => String(Math.round(n * 100) / 100);
 
 /* ---------------------------- Sales invoice / proforma (bordered trade template) ---------------------------- */
 
-const CURRENCY_SYMBOL: Record<string, string> = { BDT: "à§³", USD: "$", EUR: "â‚¬" };
+const CURRENCY_SYMBOL: Record<string, string> = { BDT: "৳", USD: "$", EUR: "€" };
 
 const CURRENCY_MINOR: Record<string, string> = { BDT: "PAISA", USD: "CENT", EUR: "CENT" };
 
@@ -628,7 +640,7 @@ function TradeInvoiceTemplate({
   const brandText = brand || inv.brand || "";
   const weightText = grossWeight || inv.grossWeight || "";
   // Items are priced per piece in the ERP but quoted per dozen on trade
-  // documents â€” rate per dz = unit rate x 12 (PCS units only).
+  // documents — rate per dz = unit rate x 12 (PCS units only).
   const ratePerDz = (item: DocInvoice["invoice"]["items"][number]) =>
     item.product.unit?.code === "PCS" ? num(item.rate) * 12 : num(item.rate);
 
@@ -863,7 +875,7 @@ function TradeInvoiceTemplate({
           {/* Totals strip */}
           <tr className={`border-b ${B}`}>
             <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
-              <E id="totalItems.label">{`Total Items ${"â€”".repeat(5)}>`}</E>
+              <E id="totalItems.label">{`Total Items ${"—".repeat(5)}>`}</E>
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold tabular-nums`}>
               <E id="totalItems.qty" block>
@@ -879,7 +891,7 @@ function TradeInvoiceTemplate({
           </tr>
           <tr className={`border-b-2 ${B}`}>
             <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
-              <E id="gross.label">{`GROSS WEIGHT ${"â€”".repeat(5)}>`}</E>
+              <E id="gross.label">{`GROSS WEIGHT ${"—".repeat(5)}>`}</E>
             </td>
             <td colSpan={3} className="px-2 py-1.5 font-semibold">
               <E id="gross.value" block>
@@ -1023,7 +1035,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
       className="mx-auto max-w-[210mm] bg-white p-4 text-black shadow-print"
       style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      {/* Top bar â€” outside the bordered form */}
+      {/* Top bar — outside the bordered form */}
       <div className="mb-1 flex items-baseline justify-between text-[13px]">
         <div className="w-1/3">
           <E id="date">{`Date : ${ddmmyy(ch.date)}`}</E>
@@ -1204,7 +1216,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
 
 const isoDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
-// Only the queries a document save actually changes â€” not the whole cache.
+// Only the queries a document save actually changes — not the whole cache.
 const DOC_KEYS: unknown[][] = [["doc-sources"], ["document"], ["products"], ["sales-orders"]];
 
 function InvoiceForm({
@@ -1329,7 +1341,7 @@ function InvoiceForm({
               <option value="">None</option>
               {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.soNo} Â· {o.buyer.name}
+                  {o.soNo} · {o.buyer.name}
                 </option>
               ))}
             </select>
@@ -1389,7 +1401,7 @@ function InvoiceForm({
       </div>
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
-          <Save /> {saving ? "Savingâ€¦" : existing ? "Save changes" : "Create proforma invoice"}
+          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create proforma invoice"}
         </Button>
       </div>
     </form>
@@ -1486,7 +1498,7 @@ function ChalanForm({
               <option value="">None</option>
               {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.soNo} Â· {o.buyer.name}
+                  {o.soNo} · {o.buyer.name}
                 </option>
               ))}
             </select>
@@ -1524,7 +1536,7 @@ function ChalanForm({
       />
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={saving || !buyerId || lines.length === 0}>
-          <Save /> {saving ? "Savingâ€¦" : existing ? "Save changes" : "Create chalan"}
+          <Save /> {saving ? "Saving…" : existing ? "Save changes" : "Create chalan"}
         </Button>
       </div>
     </form>
