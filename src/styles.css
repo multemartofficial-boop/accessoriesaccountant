@@ -201,7 +201,9 @@
 
 @page {
   size: A4 portrait;
-  margin: 9mm 8mm;
+  /* Zero page margin suppresses the browser's own header/footer
+     (date, title, URL, page numbers); spacing is applied on #print-document. */
+  margin: 0;
 }
 
 @media print {
@@ -231,7 +233,8 @@
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 9mm 8mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     background: #fff !important;
   }
