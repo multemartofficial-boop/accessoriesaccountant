@@ -515,6 +515,13 @@ function EditableLabel({
 
 const E = EditableLabel;
 
+// Reads the number out of a (possibly hand-edited) cell, e.g. "$ 1,234.50" -> 1234.5.
+const parseNum = (s?: string) => {
+  const m = (s ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : 0;
+};
+const trimNum = (n: number) => String(Math.round(n * 100) / 100);
+
 /* ---------------------------- Sales invoice / proforma (bordered trade template) ---------------------------- */
 
 const CURRENCY_SYMBOL: Record<string, string> = { BDT: "à§³", USD: "$", EUR: "â‚¬" };
@@ -617,11 +624,6 @@ function TradeInvoiceTemplate({
   const fx = (n: number | string) =>
     `${sym} ${num(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const totalQty = inv.items.reduce((s, i) => s + num(i.quantity), 0);
-  const subtotal = num(inv.subtotal);
-  const tax = num(inv.taxTotal);
-  const less = num(inv.discount);
-  const grand = num(inv.total);
   // Composer fields override; otherwise print the values saved on the invoice.
   const brandText = brand || inv.brand || "";
   const weightText = grossWeight || inv.grossWeight || "";
@@ -648,6 +650,53 @@ function TradeInvoiceTemplate({
     .filter(Boolean);
   const noteLines = parsedNotes.length ? parsedNotes : PROFORMA_NOTES;
   const filler = Math.max(0, 12 - inv.items.length);
+
+  // Totals follow the cells as they are shown, so hand-edited qty / rate /
+  // amount cells (double-click) recalculate everything below them. A cell
+  // that is itself hand-edited always wins over the calculated value.
+  const { labels } = useContext(LabelContext);
+  const edited = (id: string) => id in labels;
+  const rows = [
+    ...inv.items.map((item, i) => ({
+      key: `r${i}`,
+      qty: String(num(item.quantity)),
+      rate: `${sym} ${ratePerDz(item).toFixed(2)}`,
+      amount: num(item.total),
+      perDz: item.product.unit?.code === "PCS" ? 12 : 1,
+    })),
+    ...Array.from({ length: filler }, (_, i) => ({
+      key: `f${i}`,
+      qty: "",
+      rate: "",
+      amount: 0,
+      perDz: 12,
+    })),
+  ].map((r) => {
+    const qty = parseNum(labels[`${r.key}.qty`] ?? r.qty);
+    const rate = parseNum(labels[`${r.key}.rate`] ?? r.rate);
+    const recalc = edited(`${r.key}.qty`) || edited(`${r.key}.rate`);
+    const auto = recalc ? (qty * rate) / r.perDz : r.amount;
+    const amountId = `${r.key}.amount`;
+    return {
+      qty,
+      amount: edited(amountId) ? parseNum(labels[amountId]) : auto,
+      amountText: auto || (!recalc && r.key.startsWith("r")) ? fx(auto) : "",
+      changed: recalc || edited(amountId),
+    };
+  });
+  const over = (id: string, value: number) =>
+    edited(`${id}.value`) ? parseNum(labels[`${id}.value`]) : value;
+  const linesChanged = rows.some((r) => r.changed);
+  const totalQty = rows.reduce((s, r) => s + r.qty, 0);
+  const savedSub = num(inv.subtotal);
+  const subtotal = over("sub", linesChanged ? rows.reduce((s, r) => s + r.amount, 0) : savedSub);
+  // VAT keeps the saved invoice's effective rate when line amounts change.
+  const tax = over("vat", savedSub ? (num(inv.taxTotal) * subtotal) / savedSub : num(inv.taxTotal));
+  const total = over("total", subtotal + tax);
+  const less = over("less", num(inv.discount));
+  const recalculated =
+    linesChanged || ["sub", "vat", "total", "less"].some((k) => edited(`${k}.value`));
+  const grand = over("grand", recalculated ? total - less : num(inv.total));
 
   return (
     <div
@@ -782,7 +831,7 @@ function TradeInvoiceTemplate({
               </td>
               <td className="px-2 py-1 text-right tabular-nums">
                 <E id={`r${i}.amount`} block>
-                  {fx(item.total)}
+                  {rows[i]!.amountText}
                 </E>
               </td>
             </tr>
@@ -805,7 +854,9 @@ function TradeInvoiceTemplate({
                 <E id={`f${i}.rate`} block />
               </td>
               <td className="px-2 py-1 text-right tabular-nums">
-                <E id={`f${i}.amount`} block />
+                <E id={`f${i}.amount`} block>
+                  {rows[inv.items.length + i]!.amountText}
+                </E>
               </td>
             </tr>
           ))}
@@ -816,7 +867,7 @@ function TradeInvoiceTemplate({
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold tabular-nums`}>
               <E id="totalItems.qty" block>
-                {String(totalQty)}
+                {trimNum(totalQty)}
               </E>
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold`}>
@@ -890,7 +941,7 @@ function TradeInvoiceTemplate({
                     [
                       ["sub", "Sub Total", fx(subtotal), true],
                       ["vat", "VAT", fx(tax), tax > 0],
-                      ["total", "Total", fx(subtotal + tax), true],
+                      ["total", "Total", fx(total), true],
                       ["less", "Less", less ? fx(less) : "0.00", true],
                       ["grand", "Grand Total :", fx(grand), true],
                     ] as const
@@ -941,12 +992,25 @@ function TradeInvoiceTemplate({
 function ChalanTemplate({ doc }: { doc: DocChalan }) {
   const c = doc.company;
   const ch = doc.chalan;
-  const total = ch.items.reduce((s, i) => s + num(i.quantity), 0);
   // Printed forms keep a fixed block of ruled rows so the sheet still looks
   // complete when few items ship; longer lists simply overflow to page 2+.
   const filler = Math.max(0, 22 - ch.items.length);
   const qtyCell = "border border-black px-1 py-[3px] text-center align-middle";
   const extraQtyCols = 5;
+  // Column totals follow the cells as shown, including hand-edited ones.
+  const { labels } = useContext(LabelContext);
+  const colTotals = Array.from({ length: extraQtyCols + 1 }, (_, j) => {
+    const items = ch.items.reduce(
+      (s, item, i) =>
+        s + parseNum(labels[`r${i}.q${j}`] ?? (j === 0 ? String(num(item.quantity)) : "")),
+      0,
+    );
+    return Array.from({ length: filler }).reduce<number>(
+      (s, _, i) => s + parseNum(labels[`f${i}.q${j}`]),
+      items,
+    );
+  });
+  const total = colTotals[0]!;
 
   return (
     <div
@@ -1085,12 +1149,12 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
               <E id="total.label">{`Total Qty (Pcs.)= ${total.toLocaleString()} pcs`}</E>
             </td>
             <td className={`${qtyCell} font-bold`}>
-              <E id="total.q0" block>{`${total} PCS`}</E>
+              <E id="total.q0" block>{`${trimNum(total)} PCS`}</E>
             </td>
             {Array.from({ length: extraQtyCols }).map((_, j) => (
               <td key={j} className={`${qtyCell} font-bold`}>
                 <E id={`total.q${j + 1}`} block>
-                  00 PCS
+                  {`${colTotals[j + 1] ? trimNum(colTotals[j + 1]!) : "00"} PCS`}
                 </E>
               </td>
             ))}
