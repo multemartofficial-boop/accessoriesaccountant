@@ -214,6 +214,9 @@ export function ProductsScreen() {
                               {money(p.salesPrice)}
                             </td>
                             <td className="px-3 py-2 text-center">
+                              <div className="text-[12px] font-semibold tabular-nums">
+                                {num(p.totalStock).toLocaleString()}
+                              </div>
                               <Badge
                                 variant="outline"
                                 className={cn(
@@ -306,6 +309,18 @@ export function ProductsScreen() {
                                         setDraft((d) => ({ ...d, minStock: event.target.value }))
                                       }
                                       className="h-8 w-24 rounded-md border border-input bg-card px-2 text-xs"
+                                    />
+                                  </div>
+                                  <div className="grid gap-1">
+                                    <label className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                                      Stock
+                                    </label>
+                                    <Input
+                                      value={num(p.totalStock).toLocaleString()}
+                                      readOnly
+                                      disabled
+                                      title="Current stock across warehouses — change it via Purchase invoices or Inventory → Stock adjustment"
+                                      className="h-8 w-24 rounded-md border border-input bg-muted px-2 text-xs text-muted-foreground"
                                     />
                                   </div>
                                   <div className="grid gap-1">
@@ -413,6 +428,10 @@ function ProductForm({
   onDone: () => void;
 }) {
   const save = useSave();
+  const { data: warehouses } = useData<{ id: number; name: string }[]>(
+    ["warehouses"],
+    "/warehouses",
+  );
   return (
     <form
       key={initial?.id ?? "new"}
@@ -431,10 +450,23 @@ function ProductForm({
           minStock: Number(v["Minimum stock"]),
           taxRateId: rates.find((r) => r.name === v["Tax rate"])?.id ?? null,
         };
-        save(
-          initial ? api.put(`/products/${initial.id}`, payload) : api.post("/products", payload),
-          "Product saved",
-        ).then(onDone);
+        const submit = async () => {
+          if (initial) return api.put(`/products/${initial.id}`, payload);
+          const created = await api.post<{ id: number }>("/products", payload);
+          const openingQty = Number(v["Opening stock"] || 0);
+          const warehouseId = Number(v["Opening stock warehouse"] || 0);
+          if (created?.id && openingQty > 0 && warehouseId) {
+            await api.post("/inventory/adjustments", {
+              productId: created.id,
+              warehouseId,
+              quantity: openingQty,
+              reason: "Opening stock",
+              reference: "Opening balance",
+            });
+          }
+          return created;
+        };
+        save(submit(), "Product saved").then(onDone);
       }}
       className="bg-workspace/40 p-5"
     >
@@ -485,6 +517,25 @@ function ProductForm({
           />
           <Field label="Sales price" type="number" defaultValue={initial?.salesPrice} required />
           <Field label="Minimum stock" type="number" defaultValue={initial?.minStock} required />
+          {!initial && (
+            <>
+              <Field label="Opening stock qty" name="Opening stock" type="number" />
+              <label className="grid gap-1.5 text-xs font-semibold">
+                <span>Opening stock warehouse</span>
+                <select
+                  name="Opening stock warehouse"
+                  className="h-11 rounded-lg border border-input bg-card px-2.5 text-sm md:h-9 md:text-xs"
+                >
+                  <option value="">Skip / no opening stock</option>
+                  {(warehouses ?? []).map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
           <label className="grid gap-1.5 text-xs font-semibold">
             <span>Tax rate</span>
             <select

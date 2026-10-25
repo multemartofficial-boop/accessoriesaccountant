@@ -90,6 +90,11 @@ const PROFORMA_NOTES = [
   "If invoice amount less than $1500-must be Paid by the RTGS or FDD only.",
 ];
 
+// Fallback chalan footnote when neither the document nor Settings → Document
+// templates provides one.
+const CHALAN_NOTE =
+  "Note for any shortage kindly\nintimate us within three days.\n\nAfter receiving goods. After that\nit is not considerable.";
+
 const usd = (n: number | string) =>
   `$ ${num(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -167,6 +172,23 @@ export function DocumentsScreen() {
     setLoadedKey(savedKey);
     setBrand(savedInv.brand ?? "");
     setGrossWeight(savedInv.grossWeight ?? "");
+  }
+
+  // Notes default: the document's own saved notes first, then the Settings →
+  // Document templates default, then the built-in text. They land in the
+  // composer textarea so lines can be appended per document; the same key
+  // guard as above keeps hand-typed edits until the document/template changes.
+  const templateNotes = isChalan
+    ? settings?.["doc_chalan_notes"]
+    : settings?.["doc_proforma_notes"];
+  const fallbackNotes = isChalan ? CHALAN_NOTE : PROFORMA_NOTES.join("\n");
+  const savedNotes = isChalan ? chalanDoc?.chalan.notes : savedInv?.notes;
+  const defaultNotes = savedNotes ?? templateNotes ?? fallbackNotes;
+  const notesKey = `${kind}|${selectedId ?? 0}|${defaultNotes}`;
+  const [loadedNotesKey, setLoadedNotesKey] = useState<string>();
+  if (notesKey !== loadedNotesKey) {
+    setLoadedNotesKey(notesKey);
+    setNotes(defaultNotes);
   }
 
   // Table header labels are overridable per document (double-click in the
@@ -301,6 +323,7 @@ export function DocumentsScreen() {
                 orders={orders ?? []}
                 taxRates={taxRates ?? []}
                 existing={mode === "edit" ? invoiceDoc?.invoice : undefined}
+                defaultNotes={settings?.["doc_proforma_notes"] ?? PROFORMA_NOTES.join("\n")}
                 onSaved={onSaved}
               />
             ) : (
@@ -310,6 +333,7 @@ export function DocumentsScreen() {
                 products={products ?? []}
                 orders={orders ?? []}
                 existing={mode === "edit" ? chalanDoc?.chalan : undefined}
+                defaultNotes={settings?.["doc_chalan_notes"] ?? CHALAN_NOTE}
                 onSaved={onSaved}
               />
             )
@@ -417,12 +441,37 @@ export function DocumentsScreen() {
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder={
-                    isChalan ? settings?.["doc_chalan_notes"] : PROFORMA_NOTES.join("\n")
-                  }
+                  placeholder={isChalan ? CHALAN_NOTE : PROFORMA_NOTES.join("\n")}
+                  rows={6}
                   className="rounded-lg text-[13px] shadow-none"
                 />
               </label>
+              {doc && (
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    Defaults come from Settings → Document templates; extra lines can be added here.
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={notes === (savedNotes ?? "")}
+                    onClick={() =>
+                      void save(
+                        api.put(
+                          isChalan
+                            ? `/sales/chalans/${selectedId}`
+                            : `/sales/invoices/${selectedId}`,
+                          { notes },
+                        ),
+                        "Notes saved on the document",
+                        [["document"], ["doc-sources"]],
+                      )
+                    }
+                  >
+                    <Save className="size-4" /> Save notes
+                  </Button>
+                </div>
+              )}
               <p className="mt-3 text-[11px] text-muted-foreground">
                 Company name, logo, address and document text are managed in Settings → Company
                 profile / Document templates.
@@ -436,7 +485,7 @@ export function DocumentsScreen() {
               <TradeInvoiceTemplate
                 title="PROFORMA INVOICE"
                 doc={previewInvoice}
-                notes={notes || settings?.["doc_proforma_notes"]}
+                notes={notes}
                 brand={brand}
                 grossWeight={grossWeight}
                 currency="USD"
@@ -446,7 +495,11 @@ export function DocumentsScreen() {
             </LabelContext.Provider>
           ) : previewChalan ? (
             <LabelContext.Provider value={{ labels, setLabel }}>
-              <ChalanTemplate doc={previewChalan} />
+              <ChalanTemplate
+                doc={previewChalan}
+                notes={notes}
+                docType={settings?.["doc_chalan_type"]}
+              />
             </LabelContext.Provider>
           ) : (
             <div className="mx-auto grid min-h-[600px] max-w-xl place-items-center border bg-background text-xs text-muted-foreground">
@@ -702,13 +755,9 @@ function TradeInvoiceTemplate({
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
   const savedSub = num(inv.subtotal);
   const subtotal = over("sub", linesChanged ? rows.reduce((s, r) => s + r.amount, 0) : savedSub);
-  // VAT keeps the saved invoice's effective rate when line amounts change.
-  const tax = over("vat", savedSub ? (num(inv.taxTotal) * subtotal) / savedSub : num(inv.taxTotal));
-  const total = over("total", subtotal + tax);
   const less = over("less", num(inv.discount));
-  const recalculated =
-    linesChanged || ["sub", "vat", "total", "less"].some((k) => edited(`${k}.value`));
-  const grand = over("grand", recalculated ? total - less : num(inv.total));
+  // VAT is not printed on proforma invoices — the grand total is net of tax.
+  const grand = over("grand", subtotal - less);
 
   return (
     <div
@@ -952,8 +1001,6 @@ function TradeInvoiceTemplate({
                   {(
                     [
                       ["sub", "Sub Total", fx(subtotal), true],
-                      ["vat", "VAT", fx(tax), tax > 0],
-                      ["total", "Total", fx(total), true],
                       ["less", "Less", less ? fx(less) : "0.00", true],
                       ["grand", "Grand Total :", fx(grand), true],
                     ] as const
@@ -1001,7 +1048,15 @@ function TradeInvoiceTemplate({
   );
 }
 
-function ChalanTemplate({ doc }: { doc: DocChalan }) {
+function ChalanTemplate({
+  doc,
+  notes,
+  docType,
+}: {
+  doc: DocChalan;
+  notes?: string | undefined;
+  docType?: string | undefined;
+}) {
   const c = doc.company;
   const ch = doc.chalan;
   // Printed forms keep a fixed block of ruled rows so the sheet still looks
@@ -1041,7 +1096,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
           <E id="date">{`Date : ${ddmmyy(ch.date)}`}</E>
         </div>
         <div className="w-1/3 text-center text-[16px] font-bold tracking-[0.18em]">
-          <E id="title">DELIVERY CHALLAN</E>
+          <E id="title">{docType ? `${docType.toUpperCase()} CHALLAN` : "DELIVERY CHALLAN"}</E>
         </div>
         <div className="w-1/3 text-right">
           <E id="dcNo">{`Challan No : ${ch.dcNo}`}</E>
@@ -1188,11 +1243,7 @@ function ChalanTemplate({ doc }: { doc: DocChalan }) {
             </td>
             <td colSpan={2} className="border border-black p-2 align-top">
               <div className="text-[9.5px] italic leading-[1.45]">
-                <E id="note">
-                  {
-                    "Note for any shortage kindly\nintimate us within three days.\n\nAfter receiving goods. After that\nit is not considerable."
-                  }
-                </E>
+                <E id="note">{notes ?? CHALAN_NOTE}</E>
               </div>
             </td>
             <td colSpan={extraQtyCols - 1} className="border border-black p-2 align-bottom">
@@ -1225,6 +1276,7 @@ function InvoiceForm({
   orders,
   taxRates,
   existing,
+  defaultNotes,
   onSaved,
 }: {
   buyers: Named[];
@@ -1232,6 +1284,7 @@ function InvoiceForm({
   orders: SalesOrderLite[];
   taxRates: TaxRateLite[];
   existing?: DocInvoice["invoice"] | undefined;
+  defaultNotes?: string | undefined;
   onSaved: (id: number) => void;
 }) {
   const save = useSave();
@@ -1296,6 +1349,7 @@ function InvoiceForm({
           discount: num(discount),
           brand: brand || null,
           grossWeight: grossWeight || null,
+          notes: v["Notes"] || null,
           items: lines.map((i) => ({
             productId: i.productId,
             quantity: Number(i.quantity),
@@ -1379,6 +1433,15 @@ function InvoiceForm({
           onChange={setGrossWeight}
           placeholder="e.g. 14 KG"
         />
+        <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
+          <span>Notes (printed on the document)</span>
+          <Textarea
+            name="Notes"
+            defaultValue={existing?.notes ?? defaultNotes ?? ""}
+            rows={4}
+            className="rounded-lg text-[13px] shadow-none"
+          />
+        </label>
       </div>
       <ItemsEditor products={products} items={items} onChange={setItems} priceField="salesPrice" />
       <div className="rounded-lg border bg-surface-subtle px-4 py-3 text-[12px]">
@@ -1413,12 +1476,14 @@ function ChalanForm({
   products,
   orders,
   existing,
+  defaultNotes,
   onSaved,
 }: {
   buyers: Named[];
   products: ProductLite[];
   orders: SalesOrderLite[];
   existing?: DocChalan["chalan"] | undefined;
+  defaultNotes?: string | undefined;
   onSaved: (id: number) => void;
 }) {
   const save = useSave();
@@ -1525,7 +1590,7 @@ function ChalanForm({
           defaultValue={existing?.erpNo ?? ""}
           placeholder="e.g. LKL-TB-26-22056"
         />
-        <Field label="Notes" name="Notes" defaultValue={existing?.notes ?? ""} />
+        <Field label="Notes" name="Notes" defaultValue={existing?.notes ?? defaultNotes ?? ""} />
       </div>
       <ItemsEditor
         products={products}
