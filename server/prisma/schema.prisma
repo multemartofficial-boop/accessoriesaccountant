@@ -1,4 +1,4 @@
-// GarmentTrade ERP — database schema
+// Rahman's Label ERP — database schema
 // Remote MariaDB/MySQL on Hostinger. DATABASE_URL is assembled from
 // DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD in .env via prisma.config.ts.
 

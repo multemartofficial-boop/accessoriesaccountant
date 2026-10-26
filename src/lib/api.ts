@@ -1,4 +1,4 @@
-// Thin fetch wrapper around the GarmentTrade API.
+// Thin fetch wrapper around the Rahman's Label API.
 // Token is stored in localStorage. In dev, /api is proxied to the backend
 // (vite.config.ts); in production set VITE_API_URL to the backend origin
 // (e.g. https://your-backend.example.com/api).

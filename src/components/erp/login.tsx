@@ -27,12 +27,12 @@ export function LoginScreen() {
       <form onSubmit={submit} className="w-full max-w-sm rounded-xl border bg-card p-8 shadow-card">
         <div className="mb-6 flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            GT
+            RL
           </div>
           <div>
-            <h1 className="text-lg font-bold">GarmentTrade</h1>
+            <h1 className="text-lg font-bold">Rahman's Label</h1>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Accessories ERP
+              ERP
             </p>
           </div>
         </div>

@@ -82,9 +82,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "GarmentTrade ERP" },
+      { title: "Rahman's Label ERP" },
       { name: "description", content: "Operations and accounting workspace for garments accessories trading." },
-      { name: "author", content: "GarmentTrade" },
+      { name: "author", content: "Rahman's Label" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

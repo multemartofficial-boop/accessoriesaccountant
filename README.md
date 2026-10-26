@@ -1,4 +1,4 @@
-# Garment Accountex
+# Rahman's Label ERP
 
 Build the UI/UX (frontend design only, dummy data fine, no backend logic yet) for an ERP web app for a garments accessories trading business. Use the 5 attached images only as visual style inspiration (layout pattern, spacing, card/table structure) — don't copy their content or exact design, adapt to this business. Avoid generic AI-SaaS look: no purple gradients, no cliché rounded cards, no stock illustrations. Neutral background, one accent color (navy/teal), sharp minimal borders, dense functional data tables.
 

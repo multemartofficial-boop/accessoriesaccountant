@@ -275,7 +275,7 @@ export function DataTable({
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "garmenttrade-export.csv";
+    anchor.download = "rahmanslabel-export.csv";
     anchor.click();
     URL.revokeObjectURL(url);
     toast.success("Export prepared", { description: `${filtered.length} records downloaded.` });

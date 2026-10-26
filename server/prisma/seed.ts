@@ -60,7 +60,7 @@ async function main() {
       legalName: "RAHMAN'S LABEL",
       address: "Tejgaon Industrial Area, Dhaka 1208",
       phone: "+880 2 8877665",
-      email: "info@garmenttrade.com",
+      email: "info@rahmanslabel.com",
       vatRegNo: "004567890-0101",
     },
     update: {},
@@ -89,7 +89,7 @@ async function main() {
 
   // ── Users ──
   const users = [
-    { name: "Admin", email: "admin@garmenttrade.com", role: "ADMIN", location: "Dhaka", pw: "admin123" },
+    { name: "Sharfin", email: "sharfin82@gmail.com", role: "ADMIN", location: "Dhaka", pw: "sharfin@246#" },
   ] as const;
   for (const u of users) {
     await prisma.user.upsert({
@@ -98,7 +98,7 @@ async function main() {
       update: {},
     });
   }
-  const admin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@garmenttrade.com" } });
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email: "sharfin82@gmail.com" } });
 
   // ── Units, tax rates, categories ──
   const units = [
@@ -462,7 +462,7 @@ async function main() {
   await resyncSequences();
 
   console.log("Seed complete.");
-  console.log("Login: admin@garmenttrade.com / admin123");
+  console.log("Login: sharfin82@gmail.com / sharfin@246#");
 }
 
 main()

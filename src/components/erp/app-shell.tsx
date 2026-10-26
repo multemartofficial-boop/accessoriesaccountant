@@ -105,13 +105,13 @@ function Brand() {
   return (
     <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-3">
       <div className="grid size-8 shrink-0 place-items-center rounded-md bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
-        GT
+        RL
       </div>
       {state === "expanded" && (
         <div className="min-w-0 leading-tight">
-          <div className="truncate text-sm font-bold text-sidebar-foreground">GarmentTrade</div>
+          <div className="truncate text-sm font-bold text-sidebar-foreground">Rahman's Label</div>
           <div className="truncate text-[11px] uppercase text-sidebar-foreground/55">
-            Accessories ERP
+            ERP
           </div>
         </div>
       )}
@@ -247,9 +247,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex min-w-0 items-center gap-2 md:hidden">
             <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-              GT
+              RL
             </div>
-            <span className="truncate text-sm font-bold">GarmentTrade</span>
+            <span className="truncate text-sm font-bold">Rahman's Label</span>
           </div>
           <form onSubmit={runSearch} className="relative hidden w-full max-w-md md:block">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -348,7 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <DrawerHeader className="border-b px-5 pb-4 pt-3 text-left">
               <DrawerTitle className="text-base">All modules</DrawerTitle>
               <DrawerDescription className="text-xs">
-                Open any area of GarmentTrade ERP.
+                Open any area of Rahman's Label ERP.
               </DrawerDescription>
             </DrawerHeader>
             <div className="grid grid-cols-2 gap-2 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
