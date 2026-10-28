@@ -153,7 +153,7 @@ model CompanyProfile {
 // vat_mode, notification toggles, etc.
 model Setting {
   key       String   @id
-  value     String
+  value     String   @db.Text
   updatedAt DateTime @updatedAt
 }
 

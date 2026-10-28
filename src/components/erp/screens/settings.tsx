@@ -234,7 +234,7 @@ export function SettingsScreen() {
                       name="Proforma notes"
                       defaultValue={
                         settings?.["doc_proforma_notes"] ??
-                        "1. Complain should be brought to our notice in writing/mail within 7 days of delivery of the goods.\n2. Payment should be made only by RTGS / bank transfer.\n3. Goods once delivered will not be taken back."
+                        "1. Complain should be brought to our notice in writing/mail within 7 days of delivery of the goods.\n2. Supplied all trims by us has comes under garment accessories by HSN CODE 6217.10.00.\n3. Payment should be made only by RTGS.\n4. If invoice amount less than $1500 must be paid by the RTGS or FDD only."
                       }
                       className="rounded-lg text-[13px] shadow-none"
                     />
