@@ -298,6 +298,7 @@ salesRouter.post(
       vehicleNo,
       styleNo,
       erpNo,
+      brand,
       notes,
       items,
     } = req.body ?? {};
@@ -323,6 +324,7 @@ salesRouter.post(
           vehicleNo,
           styleNo,
           erpNo,
+          brand,
           notes,
           createdById: req.user?.id,
           items: { createMany: { data: chalanItems(items) } },
@@ -346,7 +348,8 @@ salesRouter.put(
       include: { items: true },
     });
     if (!before) throw new ApiError(404, "Chalan not found");
-    const { buyerId, date, driverName, vehicleNo, styleNo, erpNo, notes, items } = req.body ?? {};
+    const { buyerId, date, driverName, vehicleNo, styleNo, erpNo, brand, notes, items } =
+      req.body ?? {};
     if (items !== undefined && (!Array.isArray(items) || items.length === 0)) {
       badRequest("items[] must contain at least one line");
     }
@@ -365,6 +368,7 @@ salesRouter.put(
           ...(vehicleNo !== undefined && { vehicleNo }),
           ...(styleNo !== undefined && { styleNo }),
           ...(erpNo !== undefined && { erpNo }),
+          ...(brand !== undefined && { brand }),
           ...(notes !== undefined && { notes }),
           ...(items && { items: { createMany: { data: chalanItems(items) } } }),
         },

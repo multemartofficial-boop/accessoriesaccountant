@@ -69,6 +69,7 @@ interface DocChalan {
     vehicleNo?: string | null;
     styleNo?: string | null;
     erpNo?: string | null;
+    brand?: string | null;
     notes?: string | null;
     buyerId: number;
     buyer: { name: string; code?: string; address?: string; phone?: string };
@@ -162,16 +163,18 @@ export function DocumentsScreen() {
   const invoiceDoc = doc && !isChalan && "invoice" in doc ? doc : undefined;
   const chalanDoc = doc && isChalan && "chalan" in doc ? doc : undefined;
 
-  // Load the selected invoice's saved brand / gross weight into the composer
-  // fields (again whenever another invoice is picked or the saved values change).
+  // Load the selected document's saved brand / gross weight into the composer
+  // fields (again whenever another document is picked or the saved values change).
   const savedInv = invoiceDoc?.invoice;
-  const savedKey =
-    savedInv && `${savedInv.id}|${savedInv.brand ?? ""}|${savedInv.grossWeight ?? ""}`;
+  const savedCh = chalanDoc?.chalan;
+  const savedKey = savedInv
+    ? `inv|${savedInv.id}|${savedInv.brand ?? ""}|${savedInv.grossWeight ?? ""}`
+    : savedCh && `dc|${savedCh.id}|${savedCh.brand ?? ""}`;
   const [loadedKey, setLoadedKey] = useState<string>();
-  if (savedInv && savedKey !== loadedKey) {
+  if (savedKey && savedKey !== loadedKey) {
     setLoadedKey(savedKey);
-    setBrand(savedInv.brand ?? "");
-    setGrossWeight(savedInv.grossWeight ?? "");
+    setBrand(savedInv?.brand ?? savedCh?.brand ?? "");
+    setGrossWeight(savedInv?.grossWeight ?? "");
   }
 
   // Notes default: the document's own saved notes first, then the Settings →
@@ -401,14 +404,16 @@ export function DocumentsScreen() {
                   </div>
                 </div>
               )}
+              <div className="mt-4 grid gap-3">
+                <Field
+                  label="Buyer (brand) — printed as “Buyer. :”"
+                  value={brand}
+                  onChange={setBrand}
+                  placeholder="e.g. LAHALLE"
+                />
+              </div>
               {!isChalan && (
-                <div className="mt-4 grid gap-3">
-                  <Field
-                    label="Buyer (brand) — printed as “Buyer. :”"
-                    value={brand}
-                    onChange={setBrand}
-                    placeholder="e.g. LAHALLE"
-                  />
+                <div className="mt-3 grid gap-3">
                   <Field
                     label="Gross weight"
                     value={grossWeight}
@@ -498,6 +503,7 @@ export function DocumentsScreen() {
               <ChalanTemplate
                 doc={previewChalan}
                 notes={notes}
+                brand={brand}
                 docType={settings?.["doc_chalan_type"]}
               />
             </LabelContext.Provider>
@@ -1051,14 +1057,18 @@ function TradeInvoiceTemplate({
 function ChalanTemplate({
   doc,
   notes,
+  brand,
   docType,
 }: {
   doc: DocChalan;
   notes?: string | undefined;
+  brand?: string | undefined;
   docType?: string | undefined;
 }) {
   const c = doc.company;
   const ch = doc.chalan;
+  // Composer field overrides; otherwise print the value saved on the chalan.
+  const brandText = brand || ch.brand || "";
   // Printed forms keep a fixed block of ruled rows so the sheet still looks
   // complete when few items ship; longer lists simply overflow to page 2+.
   const filler = Math.max(0, 22 - ch.items.length);
@@ -1116,6 +1126,9 @@ function ChalanTemplate({
               </div>
               <div className="whitespace-pre-line uppercase leading-[1.35]">
                 <E id="buyer.address">{ch.buyer.address ?? ""}</E>
+              </div>
+              <div className="mt-2 text-[12px] font-semibold">
+                <E id="brand">{`Buyer. :${brandText.toUpperCase()}`}</E>
               </div>
               <div className="mt-2 text-[10px]">
                 <div>
@@ -1528,6 +1541,7 @@ function ChalanForm({
           vehicleNo: v["Vehicle no."] || null,
           styleNo: v["Style ref"] || null,
           erpNo: v["ERP no."] || null,
+          brand: v["Buyer brand"] || null,
           notes: v["Notes"] || null,
           items: lines.map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
         };
@@ -1589,6 +1603,12 @@ function ChalanForm({
           name="ERP no."
           defaultValue={existing?.erpNo ?? ""}
           placeholder="e.g. LKL-TB-26-22056"
+        />
+        <Field
+          label="Buyer brand"
+          name="Buyer brand"
+          defaultValue={existing?.brand ?? ""}
+          placeholder="e.g. LAHALLE"
         />
         <Field label="Notes" name="Notes" defaultValue={existing?.notes ?? defaultNotes ?? ""} />
       </div>
