@@ -25,19 +25,33 @@ const chalanItems = (items: ItemInput[]) =>
   items.map((i) => ({ productId: Number(i.productId), quantity: i.quantity }));
 
 // Falls back to the first active warehouse — single-warehouse setups don't pick one.
+// Chalans are issued before warehouse setup, so when none is configured the
+// stock posts against any existing warehouse or a lazily created default.
 async function resolveWarehouseId(warehouseId: unknown) {
   if (warehouseId) return Number(warehouseId);
   const wh = await prisma.warehouse.findFirst({
     where: { status: "ACTIVE" },
     orderBy: { id: "asc" },
   });
-  if (!wh) badRequest("No active warehouse configured");
-  return wh!.id;
+  if (wh) return wh.id;
+  const fallback = await prisma.warehouse.findFirst({ orderBy: { id: "asc" } });
+  if (fallback) return fallback.id;
+  const created = await prisma.warehouse.upsert({
+    where: { code: "WH-01" },
+    create: { code: "WH-01", name: "Main Warehouse" },
+    update: {},
+  });
+  return created.id;
 }
 
 async function assertInvNoFree(invNo: string, exceptId?: number) {
   const clash = await prisma.salesInvoice.findUnique({ where: { invNo } });
   if (clash && clash.id !== exceptId) badRequest(`Invoice number ${invNo} is already used`);
+}
+
+async function assertDcNoFree(dcNo: string, exceptId?: number) {
+  const clash = await prisma.deliveryChalan.findUnique({ where: { dcNo } });
+  if (clash && clash.id !== exceptId) badRequest(`Chalan number ${dcNo} is already used`);
 }
 
 // Recomputes lines + totals for a sales invoice (shared by create and edit).
@@ -290,6 +304,7 @@ salesRouter.post(
   requireRole("ADMIN", "MANAGER"),
   asyncHandler(async (req, res) => {
     const {
+      dcNo: customDcNo,
       salesOrderId,
       buyerId,
       warehouseId,
@@ -309,10 +324,12 @@ salesRouter.post(
       const so = await prisma.salesOrder.findUniqueOrThrow({ where: { id: Number(salesOrderId) } });
       if (so.approvalStatus === "AWAITING_APPROVAL") badRequest("Sales order is awaiting approval");
     }
+    const trimmedDcNo = typeof customDcNo === "string" ? customDcNo.trim() : "";
+    if (trimmedDcNo) await assertDcNoFree(trimmedDcNo);
     const resolvedWarehouseId = await resolveWarehouseId(warehouseId);
 
     const chalan = await withTx(async (tx) => {
-      const dcNo = await nextDocNumber(tx, "delivery_chalan", "DC");
+      const dcNo = trimmedDcNo || (await nextDocNumber(tx, "delivery_chalan", "DC"));
       const created = await tx.deliveryChalan.create({
         data: {
           dcNo,
@@ -348,11 +365,13 @@ salesRouter.put(
       include: { items: true },
     });
     if (!before) throw new ApiError(404, "Chalan not found");
-    const { buyerId, date, driverName, vehicleNo, styleNo, erpNo, brand, notes, items } =
+    const { dcNo, buyerId, date, driverName, vehicleNo, styleNo, erpNo, brand, notes, items } =
       req.body ?? {};
     if (items !== undefined && (!Array.isArray(items) || items.length === 0)) {
       badRequest("items[] must contain at least one line");
     }
+    const trimmedDcNo = typeof dcNo === "string" ? dcNo.trim() : "";
+    if (trimmedDcNo && trimmedDcNo !== before.dcNo) await assertDcNoFree(trimmedDcNo, id);
 
     const chalan = await withTx(async (tx) => {
       if (items) {
@@ -362,6 +381,7 @@ salesRouter.put(
       const updated = await tx.deliveryChalan.update({
         where: { id },
         data: {
+          ...(trimmedDcNo && { dcNo: trimmedDcNo }),
           ...(buyerId && { buyerId: Number(buyerId) }),
           ...(date && { date: new Date(date) }),
           ...(driverName !== undefined && { driverName }),

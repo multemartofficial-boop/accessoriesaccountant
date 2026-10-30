@@ -102,6 +102,7 @@ const usd = (n: number | string) =>
 interface Sources {
   invoices: { id: number; invNo: string }[];
   chalans: { id: number; dcNo: string }[];
+  nextChalanNo?: string;
 }
 
 interface Named {
@@ -336,6 +337,7 @@ export function DocumentsScreen() {
                 products={products ?? []}
                 orders={orders ?? []}
                 existing={mode === "edit" ? chalanDoc?.chalan : undefined}
+                nextDcNo={sources?.nextChalanNo}
                 defaultNotes={settings?.["doc_chalan_notes"] ?? CHALAN_NOTE}
                 onSaved={onSaved}
               />
@@ -1489,6 +1491,7 @@ function ChalanForm({
   products,
   orders,
   existing,
+  nextDcNo,
   defaultNotes,
   onSaved,
 }: {
@@ -1496,11 +1499,13 @@ function ChalanForm({
   products: ProductLite[];
   orders: SalesOrderLite[];
   existing?: DocChalan["chalan"] | undefined;
+  nextDcNo?: string | undefined;
   defaultNotes?: string | undefined;
   onSaved: (id: number) => void;
 }) {
   const save = useSave();
   const [saving, setSaving] = useState(false);
+  const [dcNo, setDcNo] = useState(existing?.dcNo ?? "");
   const [buyerId, setBuyerId] = useState<number | "">(existing?.buyerId ?? "");
   const [orderId, setOrderId] = useState<number | "">("");
   const [items, setItems] = useState<LineItem[]>(
@@ -1535,6 +1540,7 @@ function ChalanForm({
         e.preventDefault();
         const v = Object.fromEntries(new FormData(e.currentTarget).entries());
         const payload = {
+          dcNo: dcNo.trim() || null,
           buyerId,
           date: v["Delivery date"],
           driverName: v["Driver name"] || null,
@@ -1565,6 +1571,18 @@ function ChalanForm({
       className="space-y-4 p-5"
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Chalan no."
+          value={dcNo}
+          onChange={setDcNo}
+          placeholder={
+            existing
+              ? existing.dcNo
+              : nextDcNo
+                ? `Leave blank for auto (${nextDcNo})`
+                : "Leave blank to auto-number"
+          }
+        />
         <EntitySelect label="Buyer" value={buyerId} onChange={setBuyerId} options={buyers} />
         {!existing && (
           <label className="grid gap-1.5 text-xs font-semibold">
