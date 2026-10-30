@@ -489,6 +489,11 @@ function ChalanForm({
   onDone: () => void;
 }) {
   const save = useSave();
+  const { data: sources } = useData<{ nextChalanNo?: string }>(
+    ["doc-sources"],
+    "/documents/sources",
+  );
+  const [dcNo, setDcNo] = useState("");
   const [buyerId, setBuyerId] = useState<number | "">("");
   const [warehouseId, setWarehouseId] = useState<number | "">("");
   const [orderId, setOrderId] = useState<number | "">("");
@@ -516,9 +521,10 @@ function ChalanForm({
         const v = Object.fromEntries(new FormData(e.currentTarget).entries());
         save(
           api.post("/sales/chalans", {
+            dcNo: dcNo.trim() || null,
             salesOrderId: orderId || null,
             buyerId,
-            warehouseId,
+            warehouseId: warehouseId || null,
             date: v["Transaction date"],
             driverName: v["Driver name"],
             vehicleNo: v["Vehicle no."],
@@ -536,12 +542,23 @@ function ChalanForm({
     >
       <div className="rounded-lg border bg-card p-5 shadow-card">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Field
+            label="Chalan no."
+            value={dcNo}
+            onChange={setDcNo}
+            placeholder={
+              sources?.nextChalanNo
+                ? `Leave blank for auto (${sources.nextChalanNo})`
+                : "Leave blank to auto-number"
+            }
+          />
           <EntitySelect label="Buyer" value={buyerId} onChange={setBuyerId} options={buyers} />
           <EntitySelect
             label="Warehouse"
             value={warehouseId}
             onChange={setWarehouseId}
             options={warehouses}
+            required={false}
           />
           <label className="grid gap-1.5 text-xs font-semibold">
             <span>Sales order (optional)</span>
@@ -580,7 +597,7 @@ function ChalanForm({
           />
         </div>
         <div className="mobile-action-bar mt-5 flex justify-end gap-2">
-          <Button type="submit" size="sm" disabled={!buyerId || !warehouseId}>
+          <Button type="submit" size="sm" disabled={!buyerId}>
             <Save />
             Post chalan
           </Button>
