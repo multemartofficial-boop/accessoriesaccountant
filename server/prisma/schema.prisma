@@ -603,7 +603,7 @@ model DeliveryChalan {
   styleNo     String? // customer style ref printed on the challan ("Style :")
   erpNo       String? // customer ERP/order ref printed on the challan ("ERP NO:")
   brand       String? // end-buyer/brand printed on the challan ("Buyer. :")
-  notes       String?
+  notes       String? @db.Text
   createdById Int?
   createdAt   DateTime @default(now())
 
@@ -647,7 +647,7 @@ model SalesInvoice {
   approvalStatus ApprovalStatus @default(NONE)
   brand          String? // end-buyer/brand printed on proforma ("Buyer. :")
   grossWeight    String? // printed "GROSS WEIGHT" e.g. "14 KG"
-  notes          String?
+  notes          String? @db.Text
   createdById    Int?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt

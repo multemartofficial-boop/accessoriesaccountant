@@ -88,7 +88,7 @@ const PROFORMA_NOTES = [
   "Complain Should be Brought to our Notice in writing / mail within 7 Days of Delivery of the Goods to You.",
   "Supplied all trims by us has comes under garment accessories by HSN CODE 6217.10.00.",
   "Payment should be made only by RTGS.",
-  "If invoice amount less than $1500-must be Paid by the RTGS or FDD only.",
+  "If invoice amount less than $1500 must be Paid by the RTGS or FDD only.",
 ];
 
 // Fallback chalan footnote when neither the document nor Settings → Document
