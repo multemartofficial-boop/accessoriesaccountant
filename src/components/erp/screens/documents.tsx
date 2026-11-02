@@ -773,7 +773,11 @@ function TradeInvoiceTemplate({
       className="mx-auto max-w-[210mm] bg-white p-4 text-black shadow-print"
       style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      <table className={`w-full border-collapse border-2 ${B} text-[11px]`}>
+      {/* h-[276mm] fills the A4 sheet (297mm minus the 9mm top/bottom print
+         padding, with a few mm of rounding headroom); the bottom-section row
+         below carries height:100% so it absorbs the slack and pushes the
+         signature row to the page bottom. */}
+      <table className={`h-[276mm] w-full border-collapse border-2 ${B} text-[11px] font-bold`}>
         <thead>
           {/* Company header */}
           <tr>
@@ -783,7 +787,11 @@ function TradeInvoiceTemplate({
                   className={`flex w-44 shrink-0 items-center justify-center border-r-2 ${B} p-2`}
                 >
                   {c?.logoUrl ? (
-                    <img src={c.logoUrl} alt="logo" className="max-h-16 object-contain" />
+                    <img
+                      src={c.logoUrl}
+                      alt="logo"
+                      className="max-h-16 w-full object-contain object-center"
+                    />
                   ) : (
                     <div className="text-center text-base font-bold uppercase leading-5">
                       <E id="c.logoText">{c?.name ?? "Company"}</E>
@@ -799,7 +807,7 @@ function TradeInvoiceTemplate({
                       {`${c?.address ?? ""}${c?.phone ? `${c?.address ? "  " : ""}PH:- ${c.phone}` : ""}`}
                     </E>
                   </div>
-                  <div className="mt-0.5 text-[11px] font-semibold">
+                  <div className="mt-0.5 text-[11px] font-bold">
                     <E id="c.tax">
                       {[
                         c?.tradeLicenseNo ? `TIN NO: ${c.tradeLicenseNo}` : "",
@@ -840,7 +848,7 @@ function TradeInvoiceTemplate({
               <div className="mt-0.5 whitespace-pre-line text-[11px] leading-4">
                 <E id="buyer.address">{inv.buyer.address ?? ""}</E>
               </div>
-              <div className="mt-3 text-[12px] font-semibold">
+              <div className="mt-3 text-[12px] font-bold">
                 <E id="brand">{`Buyer. :${brandText.toUpperCase()}`}</E>
               </div>
             </td>
@@ -884,7 +892,7 @@ function TradeInvoiceTemplate({
                 </E>
               </td>
               <td
-                className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 font-semibold leading-4`}
+                className={`border-r ${B} whitespace-pre-line break-words px-2 py-1 font-bold leading-4`}
               >
                 <E id={`r${i}.item`} block>
                   {item.product.name}
@@ -913,7 +921,7 @@ function TradeInvoiceTemplate({
               <td className={`border-r ${B} px-2 py-1`}>
                 <E id={`f${i}.style`} block />
               </td>
-              <td className={`border-r ${B} px-2 py-1 font-semibold`}>
+              <td className={`border-r ${B} px-2 py-1 font-bold`}>
                 <E id={`f${i}.item`} block />
               </td>
               <td className={`border-r ${B} px-2 py-1 text-right tabular-nums`}>
@@ -931,7 +939,7 @@ function TradeInvoiceTemplate({
           ))}
           {/* Totals strip */}
           <tr className={`border-b ${B}`}>
-            <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
+            <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-bold`}>
               <E id="totalItems.label">{`Total Items ${"—".repeat(5)}>`}</E>
             </td>
             <td className={`border-r ${B} px-2 py-1.5 text-right font-bold tabular-nums`}>
@@ -947,40 +955,42 @@ function TradeInvoiceTemplate({
             </td>
           </tr>
           <tr className={`border-b-2 ${B}`}>
-            <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-semibold`}>
+            <td colSpan={3} className={`border-r ${B} px-2 py-1.5 text-center font-bold`}>
               <E id="gross.label">{`GROSS WEIGHT ${"—".repeat(5)}>`}</E>
             </td>
-            <td colSpan={3} className="px-2 py-1.5 font-semibold">
+            <td colSpan={3} className="px-2 py-1.5 font-bold">
               <E id="gross.value" block>
                 {weightText}
               </E>
             </td>
           </tr>
-          {/* Bottom: amount-in-words / bank / notes | totals */}
-          <tr>
+          {/* Bottom: amount-in-words / bank / notes | totals. height:100%
+              makes this row soak up the page's leftover height (it collapses
+              back to natural height when the document runs to a 2nd page). */}
+          <tr className="h-full">
             <td colSpan={4} className="p-2 align-top">
               <div className="text-[11px] font-bold">
                 <E id="amountWords">{`AMOUNT\u00a0\u00a0${amountInWords(grand, cur)}.`}</E>
               </div>
-              <div className="mt-1 text-[10px] font-semibold">
+              <div className="mt-1 text-[10px] font-bold">
                 <E id="allPrices">{`ALL PRICES IN ${cur}`}</E>
               </div>
               <div className="mt-2 grid grid-cols-[110px_1fr] gap-y-0.5 text-[11px]">
                 {(
                   [
-                    ["Bank Details :", bankName, true],
-                    ["Account Holder", holder, true],
-                    ["A/C No.", acNo, false],
-                    ["Swift No.", swift, false],
-                    ["Routing No.", routing, false],
-                    ["Bank Address", bankAddr, false],
+                    ["Bank Details :", bankName],
+                    ["Account Holder", holder],
+                    ["A/C No.", acNo],
+                    ["Swift No.", swift],
+                    ["Routing No.", routing],
+                    ["Bank Address", bankAddr],
                   ] as const
-                ).map(([label, value, bold], i) => (
+                ).map(([label, value], i) => (
                   <Fragment key={i}>
                     <span className="align-top">
                       <E id={`bank.l${i}`}>{label}</E>
                     </span>
-                    <span className={bold ? "font-semibold" : ""}>
+                    <span className="font-bold">
                       <E id={`bank.v${i}`} block>
                         {value}
                       </E>
@@ -990,7 +1000,7 @@ function TradeInvoiceTemplate({
               </div>
               {noteLines.length > 0 && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold">
+                  <div className="text-[10px] font-bold">
                     <E id="notes.title">Notes:-</E>
                   </div>
                   <ol className="mt-0.5 list-decimal pl-4 text-[9.5px] leading-4">
@@ -1003,7 +1013,7 @@ function TradeInvoiceTemplate({
                 </div>
               )}
             </td>
-            <td colSpan={2} className={`border-l-2 ${B} p-0 align-top`}>
+            <td colSpan={2} className={`relative border-l-2 ${B} p-0 pb-10 align-top`}>
               <table className="w-full border-collapse text-[11px]">
                 <tbody>
                   {(
@@ -1015,14 +1025,13 @@ function TradeInvoiceTemplate({
                   )
                     .filter((r) => r[3])
                     .map(([key, label, value]) => {
-                      const weight = key === "grand" ? "font-bold" : "font-semibold";
                       return (
                         <tr key={key}>
-                          <td className={`px-2 py-1 text-right ${weight}`}>
+                          <td className="px-2 py-1 text-right font-bold">
                             <E id={`${key}.label`}>{label}</E>
                           </td>
                           <td
-                            className={`border ${B} w-24 px-2 py-1 text-right tabular-nums ${key === "grand" ? "font-bold" : ""}`}
+                            className={`border ${B} w-24 px-2 py-1 text-right font-bold tabular-nums`}
                           >
                             <E id={`${key}.value`} block>
                               {value}
@@ -1033,7 +1042,7 @@ function TradeInvoiceTemplate({
                     })}
                 </tbody>
               </table>
-              <div className="mt-8 px-2 text-right text-[11px] font-semibold italic">
+              <div className="absolute bottom-2 right-0 px-2 text-right text-[11px] italic">
                 <E id="forCompany">{`For ${c?.name ?? "Company"}`}</E>
               </div>
             </td>
@@ -1041,7 +1050,7 @@ function TradeInvoiceTemplate({
           {/* Signature footer */}
           <tr>
             <td colSpan={6} className={`border-t-2 ${B} px-3 pb-2 pt-8`}>
-              <div className="flex justify-between text-[11px] font-semibold">
+              <div className="flex justify-between text-[11px] font-bold">
                 {["Merchandiser", "Accounts", "Auth. Sign."].map((s, i) => (
                   <span key={i}>
                     <E id={`sign.${i}`}>{s}</E>
@@ -1115,7 +1124,12 @@ function ChalanTemplate({
         </div>
       </div>
 
-      <table className="w-full border-collapse border border-black text-[11px]">
+      {/* h-[270mm] fills the A4 sheet below the top bar (297mm minus print
+         padding and the bar). The item rows keep their natural height; the
+         single blank spacer row just above the totals carries height:100%
+         so it alone absorbs the slack — like the printed form, where one tall
+         empty row sits right before "Total Qty". */}
+      <table className="h-[270mm] w-full border-collapse border border-black text-[11px]">
         <thead>
           {/* To / supplier block */}
           <tr>
@@ -1230,6 +1244,14 @@ function ChalanTemplate({
               ))}
             </tr>
           ))}
+          {/* Spacer: the one tall empty row before the totals (see note above) */}
+          <tr className="h-full">
+            <td className={qtyCell} />
+            <td className="border border-black px-2 py-[3px]" />
+            {Array.from({ length: extraQtyCols + 1 }).map((_, j) => (
+              <td key={j} className={qtyCell} />
+            ))}
+          </tr>
           {/* Totals */}
           <tr>
             <td colSpan={2} className="border border-black px-2 py-[4px] font-bold">
