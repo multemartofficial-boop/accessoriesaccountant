@@ -783,9 +783,7 @@ function TradeInvoiceTemplate({
           <tr>
             <td colSpan={6} className={`border-b-2 ${B} p-0`}>
               <div className="flex items-stretch">
-                <div
-                  className={`flex w-44 shrink-0 items-center justify-center border-r-2 ${B} p-2`}
-                >
+                <div className="flex w-44 shrink-0 items-center justify-center p-2">
                   {c?.logoUrl ? (
                     <img
                       src={c.logoUrl}
@@ -1082,7 +1080,7 @@ function ChalanTemplate({
   const brandText = brand || ch.brand || "";
   // Printed forms keep a fixed block of ruled rows so the sheet still looks
   // complete when few items ship; longer lists simply overflow to page 2+.
-  const filler = Math.max(0, 22 - ch.items.length);
+  const filler = Math.max(0, 30 - ch.items.length);
   const qtyCell = "border border-black px-1 py-[3px] text-center align-middle";
   const extraQtyCols = 5;
   // Column totals follow the cells as shown, including hand-edited ones.
@@ -1125,10 +1123,9 @@ function ChalanTemplate({
       </div>
 
       {/* h-[270mm] fills the A4 sheet below the top bar (297mm minus print
-         padding and the bar). The item rows keep their natural height; the
-         single blank spacer row just above the totals carries height:100%
-         so it alone absorbs the slack — like the printed form, where one tall
-         empty row sits right before "Total Qty". */}
+         padding and the bar). There is no spacer row: the ruled item rows
+         share any slack evenly, so the whole area above "Total Qty" stays
+         boxed. */}
       <table className="h-[270mm] w-full border-collapse border border-black text-[11px]">
         <thead>
           {/* To / supplier block */}
@@ -1244,14 +1241,6 @@ function ChalanTemplate({
               ))}
             </tr>
           ))}
-          {/* Spacer: the one tall empty row before the totals (see note above) */}
-          <tr className="h-full">
-            <td className={qtyCell} />
-            <td className="border border-black px-2 py-[3px]" />
-            {Array.from({ length: extraQtyCols + 1 }).map((_, j) => (
-              <td key={j} className={qtyCell} />
-            ))}
-          </tr>
           {/* Totals */}
           <tr>
             <td colSpan={2} className="border border-black px-2 py-[4px] font-bold">
